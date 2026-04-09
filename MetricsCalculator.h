@@ -1,0 +1,4 @@
+#ifndef METRICSCALCULATOR_H
+#define METRICSCALCULATOR_H
+
+#endif
