@@ -30,6 +30,9 @@ class Particle {
         void setVx(double vx_);
         void setVy(double vy_);
 
+    // ** Pone ax = ay = 0 (llamar antes de acumular contribuciones). */
+    void zeroAcceleration();
+
 };
 
 #endif

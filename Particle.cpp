@@ -37,3 +37,8 @@ double Particle::getAx() const {
 double Particle::getAy() const {
     return ay;
 }
+
+void Particle::zeroAcceleration() {
+    ax = 0.0;
+    ay = 0.0;
+}
