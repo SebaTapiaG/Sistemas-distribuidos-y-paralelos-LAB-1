@@ -10,6 +10,11 @@ Particle::Particle(double m, double x, double y){
     this->ay = 0.0;
 }
 
+void Particle::setAcceleration(double ax_, double ay_) {
+    this->ax = ax_;
+    this->ay = ay_;
+}
+
 double Particle::getMass() const {
     return mass;
 }
