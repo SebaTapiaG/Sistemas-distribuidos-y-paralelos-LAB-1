@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  ensure-base-image:
+    name: Verify GHCR base image exists
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - id: resolve
+        name: Resolve GHCR image reference
+        run: |
+          repo_lc=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+          img="ghcr.io/${repo_lc}:base"
+          echo "image=${img}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base image from GHCR
+        run: |
+          IMAGE="${{ steps.resolve.outputs.image }}"
+          if docker pull "${IMAGE}"; then
+            exit 0
+          fi
+          echo "::error title=Base image not found::Run build-base-container workflow first by modifying the Dockerfile."
+          exit 1
+
+  build-and-test:
+    name: Build and test in container
+    needs: ensure-base-image
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.ensure-base-image.outputs.image }}
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compilar
+        run: make
+
+      - name: Pruebas Unitarias e Integracion
+        run: make test
+        
+      #- name: Generar datos de Benchmark y Gráficos
+      #  run: |
+      #    make benchmark
+      #    make analysis
+          
+      #- name: Guardar Resultados como Artefactos
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: graficos-y-resultados
+      #    path: |
+      #      *.png
+      #      *.dat
