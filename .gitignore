@@ -1,1 +1,9 @@
 .vscode/
+
+# Ignorar ejecutables
+*.exe
+run_tests
+nbody_2d
+
+# Ignorar archivos objeto compilados
+*.o
