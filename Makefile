@@ -20,7 +20,7 @@ analysis: $(TARGET)
 # Enlazar con GoogleTest/Catch2 segun el proyecto; deber ́a ejecutarse en CI
 test:
 	# Compilar la prueba de Particle y sus dependencias.
-	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestMain.cpp tests/TestParticle.cpp Particle.cpp tests/TestIntegrator.cpp Integrator.cpp tests/TestBenchmark.cpp Benchmark.cpp tests/TestNBodySystem.cpp NBodySystem.cpp tests/TestNBodySimulator.cpp NBodySimulator.cpp tests/TestMetricsCalculator.cpp MetricsCalculator.cpp tests/TestVisualizer.cpp Visualizer.cpp $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestMain.cpp tests/TestParticle.cpp Particle.cpp tests/TestIntegrator.cpp Integrator.cpp tests/TestBenchmark.cpp Benchmark.cpp tests/TestNBodySystem.cpp NBodySystem.cpp tests/TestNBodySimulator.cpp NBodySimulator.cpp tests/TestMetricsCalculator.cpp MetricsCalculator.cpp tests/TestVisualizer.cpp Visualizer.cpp $(LDFLAGS) -lgtest -lgtest_main -pthread
 
 	./run_tests
 

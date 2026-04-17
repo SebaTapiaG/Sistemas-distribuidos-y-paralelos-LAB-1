@@ -1,8 +1,10 @@
 #include <iostream>
 #include <cmath>
+#include <gtest/gtest.h> // Incluimos la librería de GoogleTest
 #include "NBodySystem.h"
 
-int main() {
+// Reemplazamos "int main()" por la macro TEST de GoogleTest
+TEST(NBodySystemTest, SerialVsParalelo) {
     // Sistema pequeño N=3, G=1.0, epsilon=0.1
     NBodySystem sys_serial(1.0, 0.1);
     sys_serial.addParticle(Particle(1.0, 0.0, 0.0));
@@ -17,20 +19,16 @@ int main() {
     // 2. Ejecutar paralelo (ej. schedule dinámico, chunk 1)
     sys_parallel.computeAccelerations(1, 1);
 
-    // 3. Comparar con tolerancia [cite: 524]
+    // 3. Comparar con tolerancia
     double tolerancia = 1e-9; 
-    bool pasoTest = true;
 
     for (int i = 0; i < sys_serial.getCount(); ++i) {
         double diff_x = std::abs(sys_serial.getBodies()[i].getAx() - sys_parallel.getBodies()[i].getAx());
         double diff_y = std::abs(sys_serial.getBodies()[i].getAy() - sys_parallel.getBodies()[i].getAy());
 
-        if (diff_x > tolerancia || diff_y > tolerancia) {
-            std::cerr << "Fallo en la partícula " << i << ". Dif X: " << diff_x << ", Dif Y: " << diff_y << "\n";
-            pasoTest = false;
-        }
+        // Usamos EXPECT_LE (Expect Less or Equal) en lugar de if/else
+        // Si falla, imprimirá el mensaje personalizado
+        EXPECT_LE(diff_x, tolerancia) << "Fallo en la coordenada X de la partícula " << i;
+        EXPECT_LE(diff_y, tolerancia) << "Fallo en la coordenada Y de la partícula " << i;
     }
-
-    if(pasoTest) std::cout << "Test Serial vs Paralelo superado con tolerancia " << tolerancia << ".\n";
-    return 0;
 }
