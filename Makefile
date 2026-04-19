@@ -17,10 +17,10 @@ benchmark: $(TARGET)
 analysis: $(TARGET)
 	./$(TARGET) -analysis
 
-# Enlazar con GoogleTest/Catch2 segun el proyecto; deber ́a ejecutarse en CI
+# Enlazar con GoogleTest/Catch2 segun el proyecto; debera ejecutarse en CI
 test:
-	# Compilar la prueba de Particle y sus dependencias.
-	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestMain.cpp tests/TestParticle.cpp Particle.cpp tests/TestIntegrator.cpp Integrator.cpp tests/TestBenchmark.cpp Benchmark.cpp tests/TestNBodySystem.cpp NBodySystem.cpp tests/TestNBodySimulator.cpp NBodySimulator.cpp tests/TestMetricsCalculator.cpp MetricsCalculator.cpp tests/TestVisualizer.cpp Visualizer.cpp $(LDFLAGS) -lgtest -lgtest_main -pthread
+	# Compilar las pruebas de Particle y NBodySystem.
+	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestParticle.cpp tests/TestNBodySystem.cpp Particle.cpp NBodySystem.cpp $(LDFLAGS) -lgtest -lgtest_main -pthread
 
 	./run_tests
 

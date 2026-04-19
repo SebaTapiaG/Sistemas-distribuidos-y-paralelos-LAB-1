@@ -1,34 +1,156 @@
-#include <iostream>
 #include <cmath>
-#include <gtest/gtest.h> // Incluimos la librería de GoogleTest
+#include <gtest/gtest.h>
 #include "NBodySystem.h"
 
-// Reemplazamos "int main()" por la macro TEST de GoogleTest
-TEST(NBodySystemTest, SerialVsParalelo) {
-    // Sistema pequeño N=3, G=1.0, epsilon=0.1
-    NBodySystem sys_serial(1.0, 0.1);
-    sys_serial.addParticle(Particle(1.0, 0.0, 0.0));
-    sys_serial.addParticle(Particle(2.0, 1.0, 0.5));
-    sys_serial.addParticle(Particle(0.5, -1.0, -1.0));
+namespace {
 
-    NBodySystem sys_parallel = sys_serial; // Copia exacta
+constexpr double kTolerance = 1e-9;
 
-    // 1. Ejecutar serial
-    sys_serial.computeAccelerations();
+NBodySystem CreateSmallSystem() {
+    NBodySystem system(1.0, 0.1);
+    system.addParticle(Particle(1.0, 0.0, 0.0));
+    system.addParticle(Particle(2.0, 1.0, 0.5));
+    system.addParticle(Particle(0.5, -1.0, -1.0));
+    return system;
+}
 
-    // 2. Ejecutar paralelo (ej. schedule dinámico, chunk 1)
-    sys_parallel.computeAccelerations(1, 1);
+struct ExpectedAcceleration {
+    double ax;
+    double ay;
+};
 
-    // 3. Comparar con tolerancia
-    double tolerancia = 1e-9; 
+ExpectedAcceleration ComputeExpectedAcceleration(const NBodySystem& system, int index) {
+    const auto& bodies = system.getBodies();
+    const double epsilon = system.getEpsilon();
+    const double epsilon2 = epsilon * epsilon;
 
-    for (int i = 0; i < sys_serial.getCount(); ++i) {
-        double diff_x = std::abs(sys_serial.getBodies()[i].getAx() - sys_parallel.getBodies()[i].getAx());
-        double diff_y = std::abs(sys_serial.getBodies()[i].getAy() - sys_parallel.getBodies()[i].getAy());
+    double ax = 0.0;
+    double ay = 0.0;
+    const double xi = bodies[index].getX();
+    const double yi = bodies[index].getY();
 
-        // Usamos EXPECT_LE (Expect Less or Equal) en lugar de if/else
-        // Si falla, imprimirá el mensaje personalizado
-        EXPECT_LE(diff_x, tolerancia) << "Fallo en la coordenada X de la partícula " << i;
-        EXPECT_LE(diff_y, tolerancia) << "Fallo en la coordenada Y de la partícula " << i;
+    for (int j = 0; j < system.getCount(); ++j) {
+        if (j == index) {
+            continue;
+        }
+
+        const double dx = bodies[j].getX() - xi;
+        const double dy = bodies[j].getY() - yi;
+        const double dist2 = dx * dx + dy * dy + epsilon2;
+        const double dist3 = dist2 * std::sqrt(dist2);
+        const double factor = system.getG() * bodies[j].getMass() / dist3;
+
+        ax += factor * dx;
+        ay += factor * dy;
+    }
+
+    return {ax, ay};
+}
+
+}  // namespace
+
+TEST(NBodySystemTest, ConstructorStoresPhysicalParameters) {
+    NBodySystem system(2.5, 0.2);
+
+    EXPECT_DOUBLE_EQ(system.getG(), 2.5);
+    EXPECT_DOUBLE_EQ(system.getEpsilon(), 0.2);
+    EXPECT_EQ(system.getCount(), 0);
+}
+
+TEST(NBodySystemTest, ConstructorRejectsInvalidParameters) {
+    EXPECT_THROW(NBodySystem(1.0, 0.0), std::invalid_argument);
+    EXPECT_THROW(NBodySystem(1.0, -0.1), std::invalid_argument);
+    EXPECT_THROW(NBodySystem(-1.0, 0.1), std::invalid_argument);
+}
+
+TEST(NBodySystemTest, AddParticleUpdatesCountAndBodies) {
+    NBodySystem system(1.0, 0.1);
+
+    system.addParticle(Particle(3.0, 4.0, -2.0));
+
+    ASSERT_EQ(system.getCount(), 1);
+    const auto& bodies = system.getBodies();
+    EXPECT_DOUBLE_EQ(bodies[0].getMass(), 3.0);
+    EXPECT_DOUBLE_EQ(bodies[0].getX(), 4.0);
+    EXPECT_DOUBLE_EQ(bodies[0].getY(), -2.0);
+}
+
+TEST(NBodySystemTest, AddParticleRejectsNonPositiveMass) {
+    NBodySystem system(1.0, 0.1);
+
+    EXPECT_THROW(system.addParticle(Particle(0.0, 0.0, 0.0)), std::invalid_argument);
+    EXPECT_THROW(system.addParticle(Particle(-1.0, 0.0, 0.0)), std::invalid_argument);
+}
+
+TEST(NBodySystemTest, ZeroAccelerationsResetsAllBodies) {
+    NBodySystem system = CreateSmallSystem();
+
+    system.getBodies()[0].setAcceleration(3.0, -4.0);
+    system.getBodies()[1].setAcceleration(-1.0, 2.0);
+    system.getBodies()[2].setAcceleration(8.0, 9.0);
+
+    system.zeroAccelerations();
+
+    for (const auto& body : system.getBodies()) {
+        EXPECT_DOUBLE_EQ(body.getAx(), 0.0);
+        EXPECT_DOUBLE_EQ(body.getAy(), 0.0);
+    }
+}
+
+TEST(NBodySystemTest, SerialAccelerationMatchesExpectedValues) {
+    NBodySystem system = CreateSmallSystem();
+
+    system.computeAccelerations();
+
+    ASSERT_EQ(system.getCount(), 3);
+    for (int i = 0; i < system.getCount(); ++i) {
+        const ExpectedAcceleration expected = ComputeExpectedAcceleration(system, i);
+        EXPECT_NEAR(system.getBodies()[i].getAx(), expected.ax, kTolerance) << "Particula " << i;
+        EXPECT_NEAR(system.getBodies()[i].getAy(), expected.ay, kTolerance) << "Particula " << i;
+    }
+}
+
+TEST(NBodySystemTest, ScheduleOverloadMatchesSerialComputation) {
+    NBodySystem serial_system = CreateSmallSystem();
+    NBodySystem dynamic_system = CreateSmallSystem();
+    NBodySystem guided_system = CreateSmallSystem();
+    NBodySystem auto_system = CreateSmallSystem();
+
+    serial_system.computeAccelerations();
+    dynamic_system.computeAccelerations(1);
+    guided_system.computeAccelerations(2);
+    auto_system.computeAccelerations(99);
+
+    for (int i = 0; i < serial_system.getCount(); ++i) {
+        EXPECT_NEAR(serial_system.getBodies()[i].getAx(), dynamic_system.getBodies()[i].getAx(), kTolerance)
+            << "Particula " << i;
+        EXPECT_NEAR(serial_system.getBodies()[i].getAy(), dynamic_system.getBodies()[i].getAy(), kTolerance)
+            << "Particula " << i;
+
+        EXPECT_NEAR(serial_system.getBodies()[i].getAx(), guided_system.getBodies()[i].getAx(), kTolerance)
+            << "Particula " << i;
+        EXPECT_NEAR(serial_system.getBodies()[i].getAy(), guided_system.getBodies()[i].getAy(), kTolerance)
+            << "Particula " << i;
+
+        EXPECT_NEAR(serial_system.getBodies()[i].getAx(), auto_system.getBodies()[i].getAx(), kTolerance)
+            << "Particula " << i;
+        EXPECT_NEAR(serial_system.getBodies()[i].getAy(), auto_system.getBodies()[i].getAy(), kTolerance)
+            << "Particula " << i;
+    }
+}
+
+TEST(NBodySystemTest, CollapseComputationMatchesSerialComputation) {
+    NBodySystem serial_system = CreateSmallSystem();
+    NBodySystem collapse_system = CreateSmallSystem();
+
+    serial_system.computeAccelerations();
+    collapse_system.computeAccelerationsCollapse();
+
+    ASSERT_EQ(serial_system.getCount(), collapse_system.getCount());
+    for (int i = 0; i < serial_system.getCount(); ++i) {
+        EXPECT_NEAR(serial_system.getBodies()[i].getAx(), collapse_system.getBodies()[i].getAx(), kTolerance)
+            << "Particula " << i;
+        EXPECT_NEAR(serial_system.getBodies()[i].getAy(), collapse_system.getBodies()[i].getAy(), kTolerance)
+            << "Particula " << i;
     }
 }

@@ -15,6 +15,14 @@ void Particle::setAcceleration(double ax_, double ay_) {
     this->ay = ay_;
 }
 
+void Particle::setVx(double vx_) {
+    this->vx = vx_;
+}
+
+void Particle::setVy(double vy_) {
+    this->vy = vy_;
+}
+
 double Particle::getMass() const {
     return mass;
 }

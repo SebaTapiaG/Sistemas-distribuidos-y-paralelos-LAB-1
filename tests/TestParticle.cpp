@@ -1,27 +1,57 @@
+#include <gtest/gtest.h>
 #include "Particle.h"
-#include <iostream>
-#include <random>
 
-using namespace std;
+TEST(ParticleTest, ConstructorInicializaEstado) {
+    Particle p(10.5, 2.0, -3.0);
 
-int runTestParticle() {
-    mt19937 rng(12345); // semilla fija
-    uniform_real_distribution<double> dist(0.0, 100.0);
+    EXPECT_DOUBLE_EQ(p.getMass(), 10.5);
+    EXPECT_DOUBLE_EQ(p.getX(), 2.0);
+    EXPECT_DOUBLE_EQ(p.getY(), -3.0);
+    EXPECT_DOUBLE_EQ(p.getVx(), 0.0);
+    EXPECT_DOUBLE_EQ(p.getVy(), 0.0);
+    EXPECT_DOUBLE_EQ(p.getAx(), 0.0);
+    EXPECT_DOUBLE_EQ(p.getAy(), 0.0);
+}
 
-    double mass, x, y;
-    mass = dist(rng);
-    x = dist(rng);
-    y = dist(rng);
+TEST(ParticleTest, SetAndAddAcceleration) {
+    Particle p(1.0, 0.0, 0.0);
 
-    Particle* p = new Particle(mass, x, y);
+    p.setAcceleration(1.5, -0.5);
+    EXPECT_DOUBLE_EQ(p.getAx(), 1.5);
+    EXPECT_DOUBLE_EQ(p.getAy(), -0.5);
 
-    cout << "\nTEST PARTICLE" << endl;
-    cout << "Particula creada: " << endl;
-    cout << "Masa: " << p->getMass() << endl;
-    cout << "Posicion: (" << p->getX() << ", " << p->getY() << ")" << endl;
-    cout << "Velocidad: (" << p->getVx() << ", " << p->getVy() << ")" << endl;
-    cout << "Aceleracion: (" << p->getAx() << ", " << p->getAy() << ")" << endl;
+    p.addAcceleration(0.5, 2.0);
+    EXPECT_DOUBLE_EQ(p.getAx(), 2.0);
+    EXPECT_DOUBLE_EQ(p.getAy(), 1.5);
+}
 
-    delete p;
-    return 0;
+TEST(ParticleTest, ZeroAccelerationResetsValues) {
+    Particle p(1.0, 0.0, 0.0);
+    p.setAcceleration(9.0, -7.0);
+
+    p.zeroAcceleration();
+
+    EXPECT_DOUBLE_EQ(p.getAx(), 0.0);
+    EXPECT_DOUBLE_EQ(p.getAy(), 0.0);
+}
+
+TEST(ParticleTest, KickUpdatesVelocity) {
+    Particle p(1.0, 0.0, 0.0);
+    p.setAcceleration(2.0, -4.0);
+
+    p.kick(0.5);
+
+    EXPECT_DOUBLE_EQ(p.getVx(), 1.0);
+    EXPECT_DOUBLE_EQ(p.getVy(), -2.0);
+}
+
+TEST(ParticleTest, DriftUpdatesPosition) {
+    Particle p(1.0, 1.0, 2.0);
+    p.setVx(3.0);
+    p.setVy(-1.0);
+
+    p.drift(2.0);
+
+    EXPECT_DOUBLE_EQ(p.getX(), 7.0);
+    EXPECT_DOUBLE_EQ(p.getY(), 0.0);
 }
