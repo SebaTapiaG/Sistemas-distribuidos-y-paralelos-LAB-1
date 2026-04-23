@@ -74,13 +74,6 @@ class NBodySystem {
          */
         void computeAccelerationsCollapse();
 
-        /**
-         * Actualiza la velocidad y posición de cada partícula.
-         * Versión serial de referencia (sin OpenMP).
-         * Complejidad: O(N) por paso temporal.
-         */
-        void computeSpeedAndPosition(double delta_t);
-
         // ── Acceso al estado ─────────────────────────────────────────────────────
 
         /** Referencia constante al vector de partículas (para métricas, visualización, etc.). */
@@ -88,9 +81,6 @@ class NBodySystem {
 
         /** Referencia mutable al vector de partículas (para el integrador). */
         std::vector<Particle>& getBodies();
-
-        /** Número de cuerpos en el sistema. */
-        int getCount() const;
 
         /** Constante gravitacional del sistema. */
         double getG() const;
