@@ -10,6 +10,16 @@ Particle::Particle(double m, double x, double y){
     this->ay = 0.0;
 }
 
+Particle::Particle(double m, double x, double y, double vx, double vy) {
+    this->mass = m;
+    this->x = x;
+    this->y = y;
+    this->vx = vx;
+    this->vy = vy;
+    this->ax = 0.0;
+    this->ay = 0.0;
+}
+
 void Particle::setAcceleration(double ax_, double ay_) {
     this->ax = ax_;
     this->ay = ay_;

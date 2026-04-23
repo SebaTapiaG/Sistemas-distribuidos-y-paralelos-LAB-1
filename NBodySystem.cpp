@@ -155,6 +155,14 @@ void NBodySystem::computeAccelerationsCollapse() {
     }
 }
 
+void NBodySystem::computeSpeedAndPosition(double delta_t) {
+    const int N = static_cast<int>(bodies.size());
+    for (int i = 0; i < N; ++i) {
+        bodies[i].kick(delta_t);  // v += a*dt
+        bodies[i].drift(delta_t); // r += v*dt
+    }
+}
+
 // ── Acceso al estado ─────────────────────────────────────────────────────────
 
 const std::vector<Particle>& NBodySystem::getBodies() const { return bodies; }

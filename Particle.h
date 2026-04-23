@@ -10,6 +10,7 @@ class Particle {
 
     public:
         Particle(double m, double x, double y);
+        Particle(double m, double x, double y, double vx, double vy);
         void setAcceleration(double ax_, double ay_);
         void addAcceleration(double dax, double day);
         void kick(double dt); // v += a*dt

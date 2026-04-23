@@ -19,9 +19,9 @@ analysis: $(TARGET)
 
 # Enlazar con GoogleTest/Catch2 segun el proyecto; debera ejecutarse en CI
 test:
-	# Compilar las pruebas de Particle y NBodySystem.
-	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestParticle.cpp tests/TestNBodySystem.cpp Particle.cpp NBodySystem.cpp $(LDFLAGS) -lgtest -lgtest_main -pthread
+	# Compilar las pruebas de Particle, NBodySystem y NBodySimulator.
+	$(CXX) $(CXXFLAGS) -I. -o run_tests tests/TestParticle.cpp tests/TestNBodySystem.cpp tests/TestNBodySimulator.cpp tests/TestVisualizer.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp Visualizer.cpp $(LDFLAGS) -lgtest -lgtest_main -pthread
 
 	./run_tests
 
-.PHONY: clean benchmark analysis test
+.PHONY: clean benchmark analysis run_tests
