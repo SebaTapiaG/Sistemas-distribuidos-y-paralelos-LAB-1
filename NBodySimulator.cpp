@@ -24,84 +24,74 @@ void NBodySimulator::integrateEuler(){
     }
 }
 
+// ── 0. Atomic 1. Critical 2. Nowait
 void NBodySimulator::integrateEuler(int sync_type){
-        switch(sync_type){
-        auto &bodies = system->getBodies();
+    auto& bodies = system->getBodies();
+    switch(sync_type){
 
-        //Atomic
+        // atomic
         case 0:
-            #pragma omp parallel for
-            for(int i = 0; i <= bodies.size(); i++){
-                double newVx = bodies[i].getVx() + bodies[i].getAx() * time_step;
-                double newVy = bodies[i].getVy() + bodies[i].getAy() * time_step;
-                double newX = bodies[i].getX() + newVx * time_step;
-                double newY = bodies[i].getY() + newVy * time_step;
-
-                #pragma omp atomic
-                bodies[i].setVx(newVx);
-                
-                #pragma omp atomic
-                bodies[i].setVy(newVy);
-
-                #pragma omp atomic
-                bodies[i].setX(newX);
-
-                #pragma omp atomic
-                bodies[i].setY(newY);
-            }
+            // Atomic write no funciona con setters, así que por ahora lo dejo vacío
             break;
-        
-        //Critical
+
+        // critical
         case 1:
             #pragma omp parallel for
-            for(int i = 0; i <= bodies.size(); i++){
-                double newVx = bodies[i].getVx() + bodies[i].getAx() * time_step;
-                double newVy = bodies[i].getVy() + bodies[i].getAy() * time_step;
-                double newX = bodies[i].getX() + newVx * time_step;
-                double newY = bodies[i].getY() + newVy * time_step;
+            for(size_t i = 0; i < bodies.size(); ++i) {
+                double new_vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
+                double new_vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
+                double new_x = bodies[i].getX() + new_vx * time_step;
+                double new_y = bodies[i].getY() + new_vy * time_step;
 
                 #pragma omp critical
                 {
-                    bodies[i].setVx(newVx);
-                    bodies[i].setVy(newVy);
-                    bodies[i].setX(newX);
-                    bodies[i].setY(newY);
+                    bodies[i].setVx(new_vx);
+                    bodies[i].setVy(new_vy);
+                    bodies[i].setX(new_x);
+                    bodies[i].setY(new_y);
                 }
             }
             break;
 
-        //Nowait
+        // nowait
         case 2:
+            #pragma omp parallel
+            {
+                #pragma omp for nowait
+                for(size_t i = 0; i < bodies.size(); ++i) {
+                    double vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
+                    double vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
+                    
+                    bodies[i].setVx(vx);
+                    bodies[i].setVy(vy);
+                    bodies[i].setX(bodies[i].getX() + vx * time_step);
+                    bodies[i].setY(bodies[i].getY() + vy * time_step);
+                }
+            }
             break;
 
         default:
             throw std::invalid_argument("sync_type solo puede ser 0, 1 o 2.");
             break;
     }
-
 }
 
 void NBodySimulator::integrateEuler(int sync_type, bool use_barrier){
-    switch(use_barrier){
-        case false:
-            integrateEuler(sync_type);
-        case true:
-            break;
-            
-        default: 
-            throw std::invalid_argument("use_barrier solo puede ser 0, 1.");
-            break;
+    if(use_barrier){
+
+    }
+    else{
+        integrateEuler(sync_type);
     }
 }
 
 // ── Calcula energía cinética y potencial
-
-void NBodySimulator::calculateEnergy() {
+pair<double, double> NBodySimulator::calculateEnergy() {
     double k = 0;
     double u = 0;
-    vector<Particle> &bodies = system->getBodies();
+    vector<Particle>& bodies = system->getBodies();
 
-    for (int i = 0; i <= bodies.size(); i++) {
+    for (auto i = 0; i <= bodies.size(); i++) {
         k += bodies[i].getMass() + 
              (pow(bodies[i].getVx(), 2) + 
              pow(bodies[i].getVy(), 2));
@@ -109,20 +99,22 @@ void NBodySimulator::calculateEnergy() {
         for (int j = 0; j < i; j++) {
             u += (bodies[i].getMass() * bodies[j].getMass()) /
                  sqrt(
-                    pow(abs(
-                        sqrt(pow(bodies[j].getX(), 2) + pow(bodies[j].getY(), 2)) - 
-                        sqrt(pow(bodies[i].getX(), 2) + pow(bodies[i].getY(), 2)))
-                    , 2) + pow(system->getEpsilon(), 2)
+                     pow(abs(
+                         sqrt(pow(bodies[j].getX(), 2) + pow(bodies[j].getY(), 2)) - 
+                         sqrt(pow(bodies[i].getX(), 2) + pow(bodies[i].getY(), 2))
+                     ), 2) + pow(system->getEpsilon(), 2)
                  );
         }
     }
     u = -1 * system->getG() * u;
-    k = k / 2; // Falta ver qué hacemos con estos valores
+    k = k / 2;
+    return {u, k};
 }
 
 void NBodySimulator::calculateEnergy(int method){
     switch(method){
         case 0:
+            calculateEnergy();
             break;
 
         case 1:
@@ -135,32 +127,38 @@ void NBodySimulator::calculateEnergy(int method){
 }
 
 void NBodySimulator::calculateEnergy(int method, bool use_private){
-    switch(use_private){
-        case 0:
-            calculateEnergy(method);
-            break;
+    if(use_private){
 
-        case 1:
-            break;
-
-        default: 
-            throw std::invalid_argument("use_private solo puede ser 0, 1.");
-            break;
+    }
+    else{
+        calculateEnergy(method);
     }
 }
 
 // ── 
 
-void NBodySimulator::processBodies(){
+void NBodySimulator::processBodies(int iter){
+    vector<double> k, u;
+    for(int i=0; i<iter; i++){
+        system->computeAccelerations();
+        integrateEuler();
+        auto [ui, ki] = calculateEnergy();
+        u[i] = ui;
+        k[i] = ki;
+    }
+}
+
+void NBodySimulator::processBodies(int iter, int task_type){
 
 }
 
-void NBodySimulator::processBodies(int task_type){
+void NBodySimulator::processBodies(int iter, int task_type, bool use_single){
+    if(use_single){
 
-}
-
-void NBodySimulator::processBodies(int task_type, bool use_single){
-
+    }
+    else{
+        processBodies(task_type);
+    }
 }
 
 // ──

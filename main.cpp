@@ -13,6 +13,8 @@ int main(){
     double g = 1.0;
     // Definir epsilon
     double epsilon = 10;
+    //Definir delta t
+    double delta_t = 0.01; // Paso temporal
 
     cout << "Flag Definiciones" << endl;
 
@@ -48,14 +50,13 @@ int main(){
     cout << "Flag Particulas" << endl;
 
     // Crear simulador NBodySimulator con el sistema
-    NBodySimulator simulator(&system, g, epsilon);
+    NBodySimulator simulator(&system, delta_t);
 
     cout << "Flag NBodySimulator" << endl;
     
     // Llamar a simulate() para ejecutar la simulación
-    double delta_t = 0.01; // Paso temporal
+
     int num_steps = 100;   // Número de pasos de la simulación
-    simulator.simulate(delta_t, num_steps);
 
     cout << "Flag Simulación terminada" << endl;
     // Entregar un reporte con:

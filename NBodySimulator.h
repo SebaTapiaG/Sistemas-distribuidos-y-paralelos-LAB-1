@@ -14,12 +14,12 @@ class NBodySimulator {
         void integrateEuler();
         void integrateEuler(int sync_type); // 0=atomic, 1=critical, 2=nowait
         void integrateEuler(int sync_type, bool use_barrier);
-        void calculateEnergy();
+        pair<double, double> calculateEnergy();
         void calculateEnergy(int method); // reduce=0, atomic=1
         void calculateEnergy(int method, bool use_private);
-        void processBodies();
-        void processBodies(int task_type); // task=0, parallel_for=1
-        void processBodies(int task_type, bool use_single);
+        void processBodies(int iter);
+        void processBodies(int iter, int task_type); // task=0, parallel_for=1
+        void processBodies(int iter, int task_type, bool use_single);
         void simulatePhasesBarrier();
         void parallelInitializationSingle();
 };

@@ -10,27 +10,24 @@ Particle::Particle(double m, double x, double y){
     this->ay = 0.0;
 }
 
-Particle::Particle(double m, double x, double y, double vx, double vy) {
-    this->mass = m;
-    this->x = x;
-    this->y = y;
-    this->vx = vx;
-    this->vy = vy;
-    this->ax = 0.0;
-    this->ay = 0.0;
-}
-
 void Particle::setAcceleration(double ax_, double ay_) {
     this->ax = ax_;
     this->ay = ay_;
 }
-
-void Particle::setVx(double vx_) {
-    this->vx = vx_;
+void Particle::setX(double x){
+    this->x = x;
 }
 
-void Particle::setVy(double vy_) {
-    this->vy = vy_;
+void Particle::setY(double y){
+    this->y = y;
+}
+
+void Particle::setVx(double vx){
+    this->vx = vx;
+}
+
+void Particle::setVy(double vy){
+    this->vy = vy;
 }
 
 double Particle::getMass() const {
@@ -44,6 +41,7 @@ double Particle::getX() const {
 double Particle::getY() const {
     return y;
 }
+
 
 double Particle::getVx() const {
     return vx;
