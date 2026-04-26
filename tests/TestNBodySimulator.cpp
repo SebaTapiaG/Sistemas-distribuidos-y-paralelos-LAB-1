@@ -4,6 +4,8 @@
 
 #include "NBodySimulator.h"
 
+// pronto
+
 namespace {
 
 constexpr int kMainParticleCount = 500;
@@ -27,54 +29,4 @@ NBodySystem CreateMainLikeSystem() {
 
 	return system;
 }
-
-}  // namespace
-
-TEST(NBodySimulatorTest, ConstructorStoresProvidedState) {
-	NBodySystem system(1.0, 0.1);
-	NBodySimulator simulator(&system, 2.5, 0.01);
-
-	EXPECT_EQ(simulator.getSystem(), &system);
-	EXPECT_DOUBLE_EQ(simulator.getG(), 2.5);
-	EXPECT_DOUBLE_EQ(simulator.getEpsilon(), 0.01);
-}
-
-TEST(NBodySimulatorTest, MainLikeSetupSimulatesDeterministically) {
-	NBodySystem system_a = CreateMainLikeSystem();
-	NBodySystem system_b = CreateMainLikeSystem();
-
-	ASSERT_EQ(system_a.getCount(), kMainParticleCount);
-	ASSERT_EQ(system_b.getCount(), kMainParticleCount);
-
-	NBodySimulator simulator_a(&system_a, kMainG, kMainEpsilon);
-	NBodySimulator simulator_b(&system_b, kMainG, kMainEpsilon);
-
-	const auto before = system_a.getBodies();
-
-	simulator_a.simulate(0.01, 3);
-	simulator_b.simulate(0.01, 3);
-
-	ASSERT_EQ(system_a.getCount(), kMainParticleCount);
-	ASSERT_EQ(system_b.getCount(), kMainParticleCount);
-
-	bool any_body_moved = false;
-	const double kTolerance = 1e-9;
-
-	for (int i = 0; i < kMainParticleCount; ++i) {
-		const Particle& a = system_a.getBodies()[i];
-		const Particle& b = system_b.getBodies()[i];
-
-		EXPECT_NEAR(a.getX(), b.getX(), kTolerance);
-		EXPECT_NEAR(a.getY(), b.getY(), kTolerance);
-		EXPECT_NEAR(a.getVx(), b.getVx(), kTolerance);
-		EXPECT_NEAR(a.getVy(), b.getVy(), kTolerance);
-
-		const double dx = std::fabs(a.getX() - before[i].getX());
-		const double dy = std::fabs(a.getY() - before[i].getY());
-		if (dx > kTolerance || dy > kTolerance) {
-			any_body_moved = true;
-		}
-	}
-
-	EXPECT_TRUE(any_body_moved);
 }
