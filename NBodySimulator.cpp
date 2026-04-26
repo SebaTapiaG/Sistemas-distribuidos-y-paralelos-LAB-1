@@ -31,7 +31,25 @@ void NBodySimulator::integrateEuler(int sync_type){
 
         // atomic
         case 0:
-            // Atomic write no funciona con setters, así que por ahora lo dejo vacío
+        /*
+            #pragma omp parallel for
+            for(size_t i = 0; i < bodies.size(); ++i) {
+                double new_vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
+                double new_vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
+                double new_x = bodies[i].getX() + new_vx * time_step;
+                double new_y = bodies[i].getY() + new_vy * time_step;
+
+                Cambiar esto, porque atomic write no acepta setters
+
+                #pragma omp atomic write
+                bodies[i].setVx(new_vx);
+                #pragma omp atomic write
+                bodies[i].setVy(new_vy);
+                #pragma omp atomic write 
+                bodies[i].setX(new_x);
+                #pragma omp atomic write
+                bodies[i].setY(new_y);
+            }*/
             break;
 
         // critical
@@ -91,27 +109,24 @@ pair<double, double> NBodySimulator::calculateEnergy() {
     double u = 0;
     vector<Particle>& bodies = system->getBodies();
 
-    for (auto i = 0; i <= bodies.size(); i++) {
-        k += bodies[i].getMass() + 
+    for (size_t i = 0; i < bodies.size(); i++) {
+        k += bodies[i].getMass() * 
              (pow(bodies[i].getVx(), 2) + 
              pow(bodies[i].getVy(), 2));
 
-        for (int j = 0; j < i; j++) {
-            u += (bodies[i].getMass() * bodies[j].getMass()) /
-                 sqrt(
-                     pow(abs(
-                         sqrt(pow(bodies[j].getX(), 2) + pow(bodies[j].getY(), 2)) - 
-                         sqrt(pow(bodies[i].getX(), 2) + pow(bodies[i].getY(), 2))
-                     ), 2) + pow(system->getEpsilon(), 2)
-                 );
+        for (size_t j = 0; j < i; j++) {
+            double dx = bodies[j].getX() - bodies[i].getX();
+            double dy = bodies[j].getY() - bodies[i].getY();
+            double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+            u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
         }
     }
     u = -1 * system->getG() * u;
-    k = k / 2;
+    k = k * 0.5;
     return {u, k};
 }
 
-void NBodySimulator::calculateEnergy(int method){
+/*pair<double, double> NBodySimulator::calculateEnergy(int method){
     switch(method){
         case 0:
             calculateEnergy();
@@ -124,51 +139,27 @@ void NBodySimulator::calculateEnergy(int method){
             throw std::invalid_argument("method solo puede ser 0 o 1.");
             break;
     }
-}
+}*/
 
-void NBodySimulator::calculateEnergy(int method, bool use_private){
+/*
+pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_private){
     if(use_private){
 
     }
     else{
         calculateEnergy(method);
     }
-}
+}*/
 
-// ── 
-
-void NBodySimulator::processBodies(int iter){
+// Versión serial
+pair<vector<double>, vector<double>> NBodySimulator::processBodies(int iter){
     vector<double> k, u;
-    for(int i=0; i<iter; i++){
+    for(int i = 0; i<iter; i++){
         system->computeAccelerations();
-        integrateEuler();
         auto [ui, ki] = calculateEnergy();
-        u[i] = ui;
-        k[i] = ki;
+        u.push_back(ui);
+        k.push_back(ki);
+        integrateEuler();
     }
-}
-
-void NBodySimulator::processBodies(int iter, int task_type){
-
-}
-
-void NBodySimulator::processBodies(int iter, int task_type, bool use_single){
-    if(use_single){
-
-    }
-    else{
-        processBodies(task_type);
-    }
-}
-
-// ──
-
-void NBodySimulator::simulatePhasesBarrier(){
-
-}
-
-// ──
-
-void NBodySimulator::parallelInitializationSingle(){
-
+    return {u, k};
 }
