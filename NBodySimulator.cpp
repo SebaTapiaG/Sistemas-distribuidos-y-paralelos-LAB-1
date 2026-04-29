@@ -152,14 +152,20 @@ pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_privat
 }*/
 
 // Versión serial
-pair<vector<double>, vector<double>> NBodySimulator::processBodies(int iter){
-    vector<double> k, u;
+simulation_data NBodySimulator::processBodies(int iter){
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    data.bodies.resize(iter);
+
+    // NO PARALELIZAR ESTE FOR
     for(int i = 0; i<iter; i++){
         system->computeAccelerations();
         auto [ui, ki] = calculateEnergy();
-        u.push_back(ui);
-        k.push_back(ki);
         integrateEuler();
+        data.u[i] = ui;
+        data.k[i] = ki;
+        data.bodies[i] = system->getBodies();
     }
-    return {u, k};
+    return data;
 }

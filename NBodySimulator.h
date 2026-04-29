@@ -5,6 +5,12 @@
 
 using namespace std;
 
+struct simulation_data {
+    vector<double> k;
+    vector<double> u;;
+    vector<vector<Particle>> bodies;
+};
+
 class NBodySimulator {
     private:
         NBodySystem* system;
@@ -22,11 +28,15 @@ class NBodySimulator {
         pair<double, double> calculateEnergy(int method); // reduce=0, atomic=1
         pair<double, double> calculateEnergy(int method, bool use_private);
 
-        // Simula el movimiento de las partículas
-        // Retorna las energías cinéticas y potenciales de cada iteración
-        pair<vector<double>, vector<double>> processBodies(int iter);
-        pair<vector<double>, vector<double>> processBodies(int iter, int task_type); // task=0, parallel_for=1
-        pair<vector<double>, vector<double>> processBodies(int iter, int task_type, bool use_single);
+        /*
+        Simula el movimiento de las partículas
+        Retorna la estructura simulation_data, 
+        que contiene la evolución de la energía cinética, potencial
+        y el estado de las partículas en cada iteración.
+        */
+        simulation_data processBodies(int iter);
+        simulation_data processBodies(int iter, int task_type); // task=0, parallel_for=1
+        simulation_data processBodies(int iter, int task_type, bool use_single);
         void simulatePhasesBarrier();
         void parallelInitializationSingle();
 };

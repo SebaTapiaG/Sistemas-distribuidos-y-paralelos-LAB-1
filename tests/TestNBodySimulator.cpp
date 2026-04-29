@@ -34,10 +34,10 @@ TEST_F(NBodySimulatorTest, KineticEnergyWithSetters) {
     
     // Como no tienes setG(0), para aislar K en una sola iteración, 
     // verificamos el valor inicial de k devuelto por processBodies.
-    auto [u, k] = simulator->processBodies(1);
+    simulation_data data = simulator->processBodies(1);
     
     // K = 0.5 * m * v^2 = 0.5 * 2.0 * 2 = 2.0
-    EXPECT_NEAR(k[0], 2.0, 1e-9);
+    EXPECT_NEAR(data.k[0], 2.0, 1e-9);
 }
 
 // 2. Prueba de Energía Potencial
@@ -50,10 +50,9 @@ TEST_F(NBodySimulatorTest, PotentialEnergyCalculation) {
     system->addParticle(Particle(m1, 0.0, 0.0));
     system->addParticle(Particle(m2, dist, 0.0));
     
-    auto [u, k] = simulator->processBodies(1);
-    
+    simulation_data data = simulator->processBodies(1);
     double expected_u = -G * (m1 * m2) / std::sqrt(dist * dist + eps * eps);
-    EXPECT_NEAR(u[0], expected_u, 1e-7);
+    EXPECT_NEAR(data.u[0], expected_u, 1e-7);
 }
 
 // 3. Prueba de Movimiento (Drift)
@@ -63,8 +62,7 @@ TEST_F(NBodySimulatorTest, ParticleMovesCorrectly) {
     system->addParticle(p);
     
     // Tras 1 iteración, con dt = 0.01, x debe ser 0.01 (Euler simple)
-    simulator->processBodies(1);
-    
+    simulator->processBodies(2);
     const auto& bodies = system->getBodies();
-    EXPECT_NEAR(bodies[0].getX(), 0.01, 1e-7);
+    EXPECT_NEAR(bodies[0].getX(), 0.02, 1e-7);
 }
