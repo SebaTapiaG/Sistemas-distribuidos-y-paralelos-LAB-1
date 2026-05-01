@@ -26,6 +26,7 @@ void NBodySystem::zeroAccelerations() {
         b.zeroAcceleration();
 }
 
+
 // ── Cálculo de aceleraciones (serial) ───────────────────────────────────────
 
 void NBodySystem::computeAccelerations() {
@@ -162,3 +163,11 @@ std::vector<Particle>& NBodySystem::getBodies() { return bodies; }
 
 double NBodySystem::getG()       const { return G_const; }
 double NBodySystem::getEpsilon() const { return softening_eps; }
+
+void NBodySystem::setG(double newG) {
+    G_const = newG;
+}
+
+void NBodySystem::setEpsilon(double newEps) {
+    softening_eps = newEps;
+}

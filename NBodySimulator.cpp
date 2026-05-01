@@ -169,3 +169,132 @@ simulation_data NBodySimulator::processBodies(int iter){
     }
     return data;
 }
+
+// ── Calcula energía cinética y potencial en paralelo
+pair<double, double> NBodySimulator::calculateEnergy(int method) {
+    double k = 0.0;
+    double u = 0.0;
+    vector<Particle>& bodies = system->getBodies();
+
+    switch(method) {
+        // 0: Usando reduction (La forma más eficiente en OpenMP)
+        case 0:
+            #pragma omp parallel for reduction(+:k, u) schedule(dynamic)
+            for (size_t i = 0; i < bodies.size(); i++) {
+                k += bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+                
+                for (size_t j = 0; j < i; j++) {
+                    double dx = bodies[j].getX() - bodies[i].getX();
+                    double dy = bodies[j].getY() - bodies[i].getY();
+                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                    u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+                }
+            }
+            break;
+
+        // 1: Usando atomic (Menos eficiente, obliga a los hilos a esperar para sumar)
+        case 1:
+            #pragma omp parallel for schedule(dynamic)
+            for (size_t i = 0; i < bodies.size(); i++) {
+                double local_k = bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+                double local_u = 0.0;
+                
+                for (size_t j = 0; j < i; j++) {
+                    double dx = bodies[j].getX() - bodies[i].getX();
+                    double dy = bodies[j].getY() - bodies[i].getY();
+                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                    local_u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+                }
+
+                // Protegemos la suma en las variables compartidas
+                #pragma omp atomic
+                k += local_k;
+                #pragma omp atomic
+                u += local_u;
+            }
+            break;
+
+        default:
+            throw std::invalid_argument("method solo puede ser 0 (reduction) o 1 (atomic).");
+    }
+
+    u = -1.0 * system->getG() * u;
+    k = k * 0.5;
+    return {u, k};
+}
+
+// ── processBodies usando paralelización exterior (Tasks vs Parallel For)
+simulation_data NBodySimulator::processBodies(int iter, int task_type) {
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    data.bodies.resize(iter);
+
+    // Bucle temporal serial
+    for(int i = 0; i < iter; i++) {
+        
+        if (task_type == 0) {
+            // task: Usando tareas explícitas de OpenMP
+            #pragma omp parallel
+            {
+                #pragma omp single
+                {
+                    #pragma omp task
+                    system->computeAccelerations();
+                    
+                    #pragma omp taskwait // Esperamos que se calculen las fuerzas
+
+                    #pragma omp task
+                    integrateEuler(); // Aquí integramos (asumiendo que ya paraleliza internamente o no)
+                }
+            }
+        } else if (task_type == 1) {
+            // parallel_for: El flujo clásico que ya tienes implementado
+            system->computeAccelerations();
+            integrateEuler(1); // Usando un tipo de sincronización, ej: critical
+        }
+
+        // Calculamos energía (usando reduction por defecto para mayor velocidad)
+        auto [ui, ki] = calculateEnergy(0); 
+        data.u[i] = ui;
+        data.k[i] = ki;
+        data.bodies[i] = system->getBodies();
+    }
+    return data;
+}
+
+// ── Funciones demostrativas para mostrar el uso de barreras y single
+void NBodySimulator::simulatePhasesBarrier() {
+    #pragma omp parallel
+    {
+        // Fase 1: Todos calculan algo
+        system->computeAccelerations();
+        
+        // Nadie avanza a mover las partículas hasta que TODOS terminen de calcular fuerzas
+        #pragma omp barrier 
+        
+        // Fase 2: Mover partículas
+        #pragma omp for
+        for(size_t i = 0; i < system->getBodies().size(); ++i) {
+            auto& bodies = system->getBodies();
+            bodies[i].setVx(bodies[i].getVx() + bodies[i].getAx() * time_step);
+            bodies[i].setVy(bodies[i].getVy() + bodies[i].getAy() * time_step);
+            bodies[i].setX(bodies[i].getX() + bodies[i].getVx() * time_step);
+            bodies[i].setY(bodies[i].getY() + bodies[i].getVy() * time_step);
+        }
+    }
+}
+
+void NBodySimulator::parallelInitializationSingle() {
+    #pragma omp parallel
+    {
+        // Solo un hilo hará esta inicialización, los demás esperarán al final del bloque single
+        #pragma omp single
+        {
+            // Inicialización dummy de ejemplo
+            system->setG(1.0);
+            system->setEpsilon(0.1);
+        }
+        // Aquí hay una barrera implícita: los demás hilos esperan a que el hilo 'single' termine.
+    }
+}

@@ -37,6 +37,7 @@ class NBodySystem {
 
         /** Agrega una partícula al sistema. */
         void addParticle(const Particle& p);
+   
 
         /** Pone ax = ay = 0 en todas las partículas. Llamar antes de computeAccelerations. */
         void zeroAccelerations();
@@ -87,4 +88,10 @@ class NBodySystem {
 
         /** Suavizado de Plummer del sistema. */
         double getEpsilon() const;
+
+        /** Cambia la constante gravitacional del sistema. */
+        void setG(double newG);
+
+        /** Cambia el suavizado de Plummer del sistema. */
+        void setEpsilon(double newEps);
 };
