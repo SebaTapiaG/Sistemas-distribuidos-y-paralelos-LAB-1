@@ -60,15 +60,14 @@ jobs:
       - name: Pruebas Unitarias e Integracion
         run: make test
         
-      #- name: Generar datos de Benchmark y Gráficos
-      #  run: |
-      #    make benchmark
-      #    make analysis
-          
-      #- name: Guardar Resultados como Artefactos
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: graficos-y-resultados
-      #    path: |
-      #      *.png
-      #      *.dat
+      - name: Ejecutar Simulacion y Generar Datos
+        run: ./nbody_2d
+
+      - name: Generar Graficos con Python
+        run: python3 scripts/plot_energy.py
+        
+      - name: Subir Grafico de Energia
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grafico-Energia
+          path: energy_plot.png

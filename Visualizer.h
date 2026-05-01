@@ -1,6 +1,7 @@
 #ifndef VISUALIZER_H
 #define VISUALIZER_H
 #include "NBodySystem.h"
+#include "NBodySimulator.h"
 #include <fstream>
 
 using namespace std;
@@ -22,6 +23,8 @@ class Visualizer {
         void capturarEstado(const NBodySystem& system);
 
         void cerrarArchivo();
+
+        void exportarEnergia(const simulation_data& data, const std::string& filename);
 };
 
 #endif

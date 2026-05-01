@@ -154,3 +154,22 @@ TEST(NBodySystemTest, CollapseComputationMatchesSerialComputation) {
             << "Particula " << i;
     }
 }
+
+TEST(NBodySystemTest, AccionReaccionTerceraLeyNewton) {
+    NBodySystem system(1.0, 0.1);
+    
+    system.addParticle(Particle(2.0, 0.0, 0.0)); 
+    system.addParticle(Particle(3.0, 1.0, 1.0)); 
+    
+    system.computeAccelerations();
+    const auto& bodies = system.getBodies();
+    
+    double F0x = bodies[0].getMass() * bodies[0].getAx();
+    double F0y = bodies[0].getMass() * bodies[0].getAy();
+    
+    double F1x = bodies[1].getMass() * bodies[1].getAx();
+    double F1y = bodies[1].getMass() * bodies[1].getAy();
+
+    EXPECT_NEAR(F0x, -F1x, 1e-9);
+    EXPECT_NEAR(F0y, -F1y, 1e-9);
+}

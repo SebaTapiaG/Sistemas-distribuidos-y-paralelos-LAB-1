@@ -62,50 +62,52 @@ std::vector<std::array<double, 8>> ReadSnapshot(const std::string& path) {
 	return rows;
 }
 
+TEST(VisualizerTest, CapturaEstadoDeSimulacionMainLike) {
+    const char* kSnapshotFile = "Snapshot.dat";
+    std::remove(kSnapshotFile);
+    NBodySystem system = CreateMainLikeSystem();
+    
+    
+    NBodySimulator simulator(&system, 0.01); 
+    
+    
+    simulator.processBodies(3); 
+    
+    Visualizer visualizer;
+    visualizer.abrirArchivo(); 
+    visualizer.capturarEstado(system);
+    visualizer.cerrarArchivo();
+    
+    std::ifstream snapshot(kSnapshotFile);
+    ASSERT_TRUE(snapshot.is_open());
+    snapshot.close();
+    
+    const auto rows = ReadSnapshot(kSnapshotFile);
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kMainParticleCount));
+    
+    const auto& bodies = system.getBodies();
+    const double kTolerance = 1e-4;
+    
+    EXPECT_NEAR(rows.front()[0], 0.0, kTolerance);
+    EXPECT_NEAR(rows.front()[1], bodies.front().getMass(), kTolerance);
+    EXPECT_NEAR(rows.front()[2], bodies.front().getX(), kTolerance);
+    EXPECT_NEAR(rows.front()[3], bodies.front().getY(), kTolerance);
+    EXPECT_NEAR(rows.front()[4], bodies.front().getVx(), kTolerance);
+    EXPECT_NEAR(rows.front()[5], bodies.front().getVy(), kTolerance);
+    EXPECT_NEAR(rows.front()[6], bodies.front().getAx(), kTolerance);
+    EXPECT_NEAR(rows.front()[7], bodies.front().getAy(), kTolerance);
+    
+    EXPECT_NEAR(rows.back()[0], static_cast<double>(kMainParticleCount - 1), kTolerance);
+    EXPECT_NEAR(rows.back()[1], bodies.back().getMass(), kTolerance);
+    EXPECT_NEAR(rows.back()[2], bodies.back().getX(), kTolerance);
+    EXPECT_NEAR(rows.back()[3], bodies.back().getY(), kTolerance);
+    EXPECT_NEAR(rows.back()[4], bodies.back().getVx(), kTolerance);
+    EXPECT_NEAR(rows.back()[5], bodies.back().getVy(), kTolerance);
+    EXPECT_NEAR(rows.back()[6], bodies.back().getAx(), kTolerance);
+    EXPECT_NEAR(rows.back()[7], bodies.back().getAy(), kTolerance);
+    
+    std::remove(kSnapshotFile);
+}
+
 }  // namespace
 
-/** 
-TEST(VisualizerTest, CapturaEstadoDeSimulacionMainLike) {
-	const char* kSnapshotFile = "Snapshot.dat";
-	std::remove(kSnapshotFile);
-
-	NBodySystem system = CreateMainLikeSystem();
-	NBodySimulator simulator(&system, kMainG, kMainEpsilon);
-
-	simulator.simulate(0.01, 3); // simulate ya no existe, así que ahay que cambiarlo
-
-	Visualizer visualizer;
-	visualizer.capturarEstado(system);
-	visualizer.cerrarArchivo();
-
-	std::ifstream snapshot(kSnapshotFile);
-	ASSERT_TRUE(snapshot.is_open());
-	snapshot.close();
-
-	const auto rows = ReadSnapshot(kSnapshotFile);
-	ASSERT_EQ(rows.size(), static_cast<size_t>(kMainParticleCount));
-
-	const auto& bodies = system.getBodies();
-	const double kTolerance = 1e-4;
-
-	EXPECT_NEAR(rows.front()[0], 0.0, kTolerance);
-	EXPECT_NEAR(rows.front()[1], bodies.front().getMass(), kTolerance);
-	EXPECT_NEAR(rows.front()[2], bodies.front().getX(), kTolerance);
-	EXPECT_NEAR(rows.front()[3], bodies.front().getY(), kTolerance);
-	EXPECT_NEAR(rows.front()[4], bodies.front().getVx(), kTolerance);
-	EXPECT_NEAR(rows.front()[5], bodies.front().getVy(), kTolerance);
-	EXPECT_NEAR(rows.front()[6], bodies.front().getAx(), kTolerance);
-	EXPECT_NEAR(rows.front()[7], bodies.front().getAy(), kTolerance);
-
-	EXPECT_NEAR(rows.back()[0], static_cast<double>(kMainParticleCount - 1), kTolerance);
-	EXPECT_NEAR(rows.back()[1], bodies.back().getMass(), kTolerance);
-	EXPECT_NEAR(rows.back()[2], bodies.back().getX(), kTolerance);
-	EXPECT_NEAR(rows.back()[3], bodies.back().getY(), kTolerance);
-	EXPECT_NEAR(rows.back()[4], bodies.back().getVx(), kTolerance);
-	EXPECT_NEAR(rows.back()[5], bodies.back().getVy(), kTolerance);
-	EXPECT_NEAR(rows.back()[6], bodies.back().getAx(), kTolerance);
-	EXPECT_NEAR(rows.back()[7], bodies.back().getAy(), kTolerance);
-
-	std::remove(kSnapshotFile);
-}
-*/

@@ -2,6 +2,7 @@
 #include "Particle.h"
 #include "NBodySimulator.h"
 #include <random>
+#include "Visualizer.h"
 
 using namespace std;
 
@@ -56,13 +57,22 @@ int main(){
     
     // Llamar a simulate() para ejecutar la simulación
 
-    int num_steps = 100;   // Número de pasos de la simulación
+    int num_steps = 5000;   // Numero de pasos de la simulacion
+    cout << "Iniciando simulacion de " << num_steps << " pasos..." << endl;
+    
+    // 1. Correr la simulación y guardar el historial de energía
+    simulation_data data = simulator.processBodies(num_steps);
+    cout << "Flag Simulacion terminada" << endl;
 
-    cout << "Flag Simulación terminada" << endl;
-    // Entregar un reporte con:
-    // - Descripción de la implementación (clases, métodos, etc.)
-    // - Resultados de rendimiento (tiempos de ejecución, speedup, etc.)
-    // - Análisis de la escalabilidad y eficiencia de la paralelización
-    // - Conclusiones sobre el impacto de la paralelización en el rendimiento
+    // 2. Exportar los datos usando tu Visualizer
+    Visualizer vis;
+    vis.exportarEnergia(data, "energy_timeseries.dat");
+    
+    // 3. Exportar las posiciones finales (Snapshot)
+    vis.abrirArchivo();
+    vis.capturarEstado(system);
+    vis.cerrarArchivo();
+
+    return 0;
 
 }
