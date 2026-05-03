@@ -1,0 +1,91 @@
+#include "MetricsCalculator.h"
+
+double MetricsCalculator::calculateMean(const std::vector<double>& times) {
+    if (times.empty()){
+        return 0.0;
+    }
+    double sum = std::accumulate(times.begin(), times.end(), 0.0);
+    double mean = sum / times.size();
+    return mean;
+}
+
+double MetricsCalculator::calculateStdDev(const std::vector<double>& times, double mean) {
+    if (times.size() < 2){
+        return 0.0;
+    }
+    double sq_sum = 0.0;
+    for (double t : times){
+        sq_sum += (t - mean) * (t - mean);
+    }
+    double stddev = std::sqrt(sq_sum / (times.size() - 1)); 
+    return stddev;
+}
+
+PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
+                                                      const std::vector<double>& tp_times, 
+                                                      int num_threads) {
+    PerformanceResult res;
+    
+    double t1 = calculateMean(t1_times);
+    double sigma_t1 = calculateStdDev(t1_times, t1);
+    
+    double tp = calculateMean(tp_times);
+    double sigma_tp = calculateStdDev(tp_times, tp);
+    
+    res.mean_time = tp;
+    res.std_dev = sigma_tp;
+    res.speedup = t1 / tp;
+
+    // Propagación de error: sigma_Sp = Sp * sqrt((sigma_t1/t1)^2 + (sigma_tp/tp)^2)
+    // Esto es vital para las barras de error en tus gráficos
+    double rel_err_t1 = (t1 > 0) ? (sigma_t1 / t1) : 0;
+    double rel_err_tp = (tp > 0) ? (sigma_tp / tp) : 0;
+    res.sigma_speedup = res.speedup * std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp);
+
+    res.efficiency = res.speedup / num_threads;
+    res.sigma_efficiency = res.sigma_speedup / num_threads;
+
+    return res;
+}
+
+MomentumResult MetricsCalculator::calculateMomentum(const std::vector<Particle>& bodies) {
+    double total_px = 0.0;
+    double total_py = 0.0;
+    for (const auto& p : bodies) {
+        total_px += p.getMass() * p.getVx();
+        total_py += p.getMass() * p.getVy();
+    }
+
+    return {total_px, total_py, std::sqrt(total_px * total_px + total_py * total_py)};
+}
+
+PhysicalResult MetricsCalculator::analyzePhysics(const simulation_data& data, double tolerance) {
+    PhysicalResult res;
+    
+    // Energía
+    double e_initial = data.k.front() + data.u.front();
+    double e_final = data.k.back() + data.u.back();
+    res.energy_drift = std::abs(e_final - e_initial);
+    res.relative_error = (std::abs(e_initial) > 1e-15) ? (res.energy_drift / std::abs(e_initial)) : res.energy_drift;
+
+    // Momento (usando los snapshots de partículas que guarda simulation_data)
+    res.initial_momentum = calculateMomentum(data.bodies.front());
+    res.final_momentum = calculateMomentum(data.bodies.back());
+
+    // El sistema es válido si la energía se conserva Y el momento no varía drásticamente
+    bool energy_ok = (res.relative_error <= tolerance);
+    bool momentum_ok = std::abs(res.final_momentum.magnitude - res.initial_momentum.magnitude) < tolerance;
+    
+    res.is_valid = (energy_ok && momentum_ok);
+    
+    return res;
+}
+
+double MetricsCalculator::estimateSerialFraction(double speedup, int p) {
+    if (p <= 1){
+        return 1.0;
+    }
+    // Basado en Ley de Amdahl despejada para 'f'
+    double f = ((1.0 / speedup) - (1.0 / (double)p)) / (1.0 - (1.0 / (double)p));
+    return (f < 0) ? 0 : f; // Ajuste por ruido experimental
+}
