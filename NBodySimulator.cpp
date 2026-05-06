@@ -95,11 +95,11 @@ void NBodySimulator::integrateEuler(int sync_type){
 }
 
 void NBodySimulator::integrateEuler(int sync_type, bool use_barrier){
+    integrateEuler(sync_type); // Primero movemos las partículas
+    
     if(use_barrier){
-
-    }
-    else{
-        integrateEuler(sync_type);
+        // Si estamos dentro de una región paralela, forzamos la barrera
+        #pragma omp barrier 
     }
 }
 
@@ -229,33 +229,52 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type) {
     data.u.resize(iter);
     data.k.resize(iter);
     data.bodies.resize(iter);
-
-    // Bucle temporal serial
-    for(int i = 0; i < iter; i++) {
-        
+ 
+    for (int i = 0; i < iter; i++) {
+ 
         if (task_type == 0) {
-            // task: Usando tareas explícitas de OpenMP
+            // ── Enfoque con tasks ─────────────────────────────────────────
+            // Fase 1: calcular aceleraciones (debe completarse antes de mover)
+            // Se hace en single para que solo un hilo lo ejecute; los demas
+            // esperan en la barrera implicita al final del single.
             #pragma omp parallel
             {
                 #pragma omp single
                 {
-                    #pragma omp task
+                    // computeAccelerations() tiene su propio parallel for interno
+                    // => no lanzar como task, llamar directamente desde single
                     system->computeAccelerations();
-                    
-                    #pragma omp taskwait // Esperamos que se calculen las fuerzas
-
-                    #pragma omp task
-                    integrateEuler(); // Aquí integramos (asumiendo que ya paraleliza internamente o no)
+                }
+                // Barrera implicita del single: todos los hilos tienen las
+                // aceleraciones actualizadas antes de continuar.
+ 
+                // Fase 2: kick + drift con una tarea por cuerpo
+                #pragma omp single
+                {
+                    const int N = system->getBodies().size();
+                    for (int k = 0; k < N; ++k) {
+                        // Compartimos el puntero system y copiamos el índice k
+                        #pragma omp task shared(system) firstprivate(k)
+                        {
+                            // Accedemos directamente al vector original en memoria
+                            system->getBodies()[k].kick(time_step);
+                            system->getBodies()[k].drift(time_step);
+                        }
+                    }
+                    #pragma omp taskwait
                 }
             }
-        } else if (task_type == 1) {
-            // parallel_for: El flujo clásico que ya tienes implementado
-            system->computeAccelerations();
-            integrateEuler(1); // Usando un tipo de sincronización, ej: critical
+ 
+        } else {
+            // ── Enfoque con parallel for (task_type == 1) ─────────────────
+            system->computeAccelerations(0);
+            
+            // Usamos la versión paralela nowait (2) o critical (1)
+            integrateEuler(2);
         }
-
-        // Calculamos energía (usando reduction por defecto para mayor velocidad)
-        auto [ui, ki] = calculateEnergy(0); 
+ 
+        // Energia: reduction (metodo 0) es el mas eficiente para sumas globales
+        auto [ui, ki] = calculateEnergy(0);
         data.u[i] = ui;
         data.k[i] = ki;
         data.bodies[i] = system->getBodies();
@@ -265,23 +284,32 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type) {
 
 // ── Funciones demostrativas para mostrar el uso de barreras y single
 void NBodySimulator::simulatePhasesBarrier() {
-    #pragma omp parallel
+    #pragma omp parallel default(none) shared(system, time_step)
     {
-        // Fase 1: Todos calculan algo
-        system->computeAccelerations();
-        
-        // Nadie avanza a mover las partículas hasta que TODOS terminen de calcular fuerzas
-        #pragma omp barrier 
-        
-        // Fase 2: Mover partículas
-        #pragma omp for
-        for(size_t i = 0; i < system->getBodies().size(); ++i) {
-            auto& bodies = system->getBodies();
+        // Fase 1: solo un hilo calcula todas las aceleraciones
+        #pragma omp single nowait  // nowait: no barrera implicita aqui,
+        {                          // la ponemos nosotros de forma explicita abajo
+            system->computeAccelerations();
+        }
+ 
+        // Barrera EXPLICITA: ningun hilo avanza a mover particulas
+        // hasta que computeAccelerations() haya terminado completamente.
+        #pragma omp barrier
+ 
+        // Fase 2: todos los hilos colaboran en kick + drift
+        auto& bodies = system->getBodies();
+        const int N  = static_cast<int>(bodies.size());
+ 
+        #pragma omp for schedule(static)
+        for (int i = 0; i < N; ++i) {
+            // kick: v += a * dt
             bodies[i].setVx(bodies[i].getVx() + bodies[i].getAx() * time_step);
             bodies[i].setVy(bodies[i].getVy() + bodies[i].getAy() * time_step);
+            // drift: r += v * dt  (usa la velocidad YA actualizada — Euler)
             bodies[i].setX(bodies[i].getX() + bodies[i].getVx() * time_step);
             bodies[i].setY(bodies[i].getY() + bodies[i].getVy() * time_step);
         }
+        // Barrera implicita al final del #pragma omp for
     }
 }
 

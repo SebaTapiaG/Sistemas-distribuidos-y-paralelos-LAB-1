@@ -130,30 +130,37 @@ void NBodySystem::computeAccelerations(int schedule_type) {
 }
 
 void NBodySystem::computeAccelerationsCollapse() {
-    const int N = static_cast<int>(bodies.size());
+    const int    N    = static_cast<int>(bodies.size());
     const double eps2 = softening_eps * softening_eps;
-
-    zeroAccelerations();
-
-    /* * Al usar collapse(2), el espacio de iteraciones es (i, j) plano.
-     * Múltiples hilos pueden procesar pares con el mismo 'i' al mismo tiempo.
-     * Por ello, usamos addAcceleration() que internamente tiene #pragma omp atomic[cite: 453, 500].
-     */
-    #pragma omp parallel for collapse(2)
+ 
+    // Acumuladores externos — evitan condicion de carrera en bodies[i]
+    std::vector<double> ax_acc(N, 0.0);
+    std::vector<double> ay_acc(N, 0.0);
+ 
+    // collapse(2) fusiona los bucles i y j en un espacio plano de N*N iter.
+    // Multiples hilos pueden tener el mismo i con distinto j => atomic obligatorio.
+    #pragma omp parallel for collapse(2) default(none) \
+            shared(bodies, N, eps2, ax_acc, ay_acc)
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < N; ++j) {
-            if (i == j) continue; // No se puede usar 'continue' directamente fuera de un if simple en algunos compiladores, pero aquí es válido.
-
-            const double dx = bodies[j].getX() - bodies[i].getX();
-            const double dy = bodies[j].getY() - bodies[i].getY();
+            if (i == j) continue;
+ 
+            const double dx    = bodies[j].getX() - bodies[i].getX();
+            const double dy    = bodies[j].getY() - bodies[i].getY();
             const double dist2 = dx * dx + dy * dy + eps2;
             const double dist3 = dist2 * std::sqrt(dist2);
-            const double factor = G_const * bodies[j].getMass() / dist3;
-
-            // Se suma atómicamente a las componentes de aceleración de la partícula i
-            bodies[i].addAcceleration(factor * dx, factor * dy);
+            const double fac   = G_const * bodies[j].getMass() / dist3;
+ 
+            #pragma omp atomic
+            ax_acc[i] += fac * dx;
+            #pragma omp atomic
+            ay_acc[i] += fac * dy;
         }
     }
+ 
+    // Escritura final — serial, sin carrera
+    for (int i = 0; i < N; ++i)
+        bodies[i].setAcceleration(ax_acc[i], ay_acc[i]);
 }
 
 // ── Acceso al estado ─────────────────────────────────────────────────────────

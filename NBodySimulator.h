@@ -7,7 +7,7 @@ using namespace std;
 
 struct simulation_data {
     vector<double> k;
-    vector<double> u;;
+    vector<double> u;
     vector<vector<Particle>> bodies;
 };
 
