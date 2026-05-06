@@ -11,9 +11,12 @@ struct PerformanceResult {
     double mean_time;
     double std_dev;
     double speedup;
+    double serial_fraction; // f en la Ley de Amdahl
+    double theorical_speedup;
     double sigma_speedup;
     double efficiency;
     double sigma_efficiency;
+
 };
 
 struct MomentumResult {
@@ -46,6 +49,8 @@ class MetricsCalculator {
 
         // Análisis Teórico
         static double estimateSerialFraction(double speedup, int p);
+        static double estimateSerialFractionByTime(double t1, double tp);
+        static double calculateTheoricalSpeedup(double f, int p);
 
         static MomentumResult calculateMomentum(const std::vector<Particle>& bodies);
 };

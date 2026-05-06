@@ -31,11 +31,14 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     
     double tp = calculateMean(tp_times);
     double sigma_tp = calculateStdDev(tp_times, tp);
+    double f = estimateSerialFractionByTime(t1, tp);
+    double theorical_speedup = calculateTheoricalSpeedup(f, num_threads);
     
     res.mean_time = tp;
     res.std_dev = sigma_tp;
     res.speedup = t1 / tp;
-
+    res.serial_fraction = f;
+    res.theorical_speedup = theorical_speedup;
     // Propagación de error: sigma_Sp = Sp * sqrt((sigma_t1/t1)^2 + (sigma_tp/tp)^2)
     // Esto es vital para las barras de error en tus gráficos
     double rel_err_t1 = (t1 > 0) ? (sigma_t1 / t1) : 0;
@@ -88,4 +91,17 @@ double MetricsCalculator::estimateSerialFraction(double speedup, int p) {
     // Basado en Ley de Amdahl despejada para 'f'
     double f = ((1.0 / speedup) - (1.0 / (double)p)) / (1.0 - (1.0 / (double)p));
     return (f < 0) ? 0 : f; // Ajuste por ruido experimental
+}
+double MetricsCalculator::estimateSerialFractionByTime(double t1, double tp){
+    if (t1 <= 0 || tp <= 0){
+        return 1.0;
+    }
+    double f = (t1 - tp) / t1;
+    return (f < 0) ? 0 : f; // Ajuste por ruido experimental
+}
+double MetricsCalculator::calculateTheoricalSpeedup(double f, int p) {
+    if (p <= 1){
+        return 1.0;
+    }
+    return 1.0 / (f + ((1.0 - f) / (double)p));
 }
