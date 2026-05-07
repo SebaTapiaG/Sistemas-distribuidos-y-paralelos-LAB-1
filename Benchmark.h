@@ -6,24 +6,29 @@
 #include "NBodySimulator.h"
 #include "MetricsCalculator.h"
 #include "Visualizer.h"
-
 class Benchmark {
-private:
+    private:
     int repetitions;
     int steps;
     double dt;
-    unsigned int seed; // Semilla inyectada
+    unsigned int seed;
 
-public:
-    // Constructor con semilla
+    // Método auxiliar para generar nombres de archivo basados en la configuración
+    std::string generateFileName(std::string prefix, int sync, int sched, int chunk);
+
+    public:
     Benchmark(int reps = 10, int steps = 1000, double dt = 0.01, unsigned int s = 123);
 
-    // Ejecuta el test con un tipo de sincronización específico
-    // sync_type: 0=atomic, 1=critical, etc. (según NBodySimulator)
-    void runScalabilityTest(int max_threads, int num_particles, int sync_type);
-
-private:
+    simulation_data runScalabilityTest(
+        int max_threads, 
+        int num_particles, 
+        int sync_type, 
+        int schedule_type, 
+        int chunk_size, 
+        double G, 
+        double epsilon
+    );
     void setupRandomSystem(NBodySystem& system, int n);
-};
 
+};
 #endif

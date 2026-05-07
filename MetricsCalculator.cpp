@@ -22,7 +22,8 @@ double MetricsCalculator::calculateStdDev(const std::vector<double>& times, doub
 }
 
 PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
-                                                      const std::vector<double>& tp_times, 
+                                                      const std::vector<double>& tp_times,
+                                                      const std::vector<double>& ts_times,
                                                       int num_threads) {
     PerformanceResult res;
     
@@ -31,7 +32,11 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     
     double tp = calculateMean(tp_times);
     double sigma_tp = calculateStdDev(tp_times, tp);
-    double f = estimateSerialFractionByTime(t1, tp);
+
+    double ts = calculateMean(ts_times);
+    double sigma_ts = calculateStdDev(ts_times, ts);
+
+    double f = estimateSerialFractionByTime(ts, tp);
     double theorical_speedup = calculateTheoricalSpeedup(f, num_threads);
     
     res.mean_time = tp;
@@ -43,10 +48,12 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     // Esto es vital para las barras de error en tus gráficos
     double rel_err_t1 = (t1 > 0) ? (sigma_t1 / t1) : 0;
     double rel_err_tp = (tp > 0) ? (sigma_tp / tp) : 0;
+    double rel_err_ts = (ts > 0) ? (sigma_ts / ts) : 0;
     res.sigma_speedup = res.speedup * std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp);
-
     res.efficiency = res.speedup / num_threads;
     res.sigma_efficiency = res.sigma_speedup / num_threads;
+    res.sigma_serial_fraction = res.serial_fraction*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
+    res.sigma_theorical_speedup =  res.theorical_speedup*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
 
     return res;
 }

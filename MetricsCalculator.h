@@ -12,7 +12,9 @@ struct PerformanceResult {
     double std_dev;
     double speedup;
     double serial_fraction; // f en la Ley de Amdahl
+    double sigma_serial_fraction;
     double theorical_speedup;
+    double sigma_theorical_speedup;
     double sigma_speedup;
     double efficiency;
     double sigma_efficiency;
