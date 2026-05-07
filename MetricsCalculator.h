@@ -44,6 +44,7 @@ class MetricsCalculator {
         
         static PerformanceResult analyzePerformance(const std::vector<double>& t1_times, 
                                                 const std::vector<double>& tp_times, 
+                                                const std::vector<double>& ts_times,
                                                 int num_threads);
 
         // Métricas Físicas

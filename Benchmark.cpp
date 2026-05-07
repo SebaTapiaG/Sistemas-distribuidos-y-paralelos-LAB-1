@@ -86,7 +86,7 @@ simulation_data Benchmark::runScalabilityTest(int max_threads, int num_particles
             ts_times.push_back(serialsum);
 
         }
-        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, p);
+        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
 
 
         resFile << std::left << std::setw(W_S)  << sync_type 
