@@ -61,3 +61,22 @@ void Visualizer::exportarEnergia(const simulation_data& data, const std::string&
     file.close();
     cout << "Datos de energia exportados a " << filename << endl;
 }
+
+void Visualizer::exportarTrayectorias(const simulation_data& data, const std::string& filename) {
+    std::ofstream f(filename);
+    if (!f.is_open()) return;
+
+    f << "# Paso ID Masa X Y Vx Vy\n"; // Añadimos ID
+    f << std::fixed << std::setprecision(8);
+
+    for (size_t t = 0; t < data.bodies.size(); ++t) {
+        for (size_t i = 0; i < data.bodies[t].size(); ++i) {
+            const auto& p = data.bodies[t][i];
+            // i actúa como el ID único de la partícula
+            f << t << " " << i << " " << p.getMass() << " " << p.getX() << " " << p.getY() 
+              << " " << p.getVx() << " " << p.getVy() << "\n";
+        }
+        f << "\n"; 
+    }
+    f.close();
+}

@@ -61,13 +61,24 @@ jobs:
         run: make test
         
       - name: Ejecutar Simulacion y Generar Datos
-        run: ./nbody_2d
+        run: |
+          ./nbody_2d
+          ./nbody_2d -benchmark 0
 
-      - name: Generar Graficos con Python
-        run: python3 scripts/plot_energy.py
+      - name: Generar Graficos y Animacion con Python
+        run: |
+          python3 scripts/plot_energy.py
+          python3 scripts/plot_scalability.py
+          python3 scripts/plot_efficiency.py
+          python3 scripts/animate_simulation.py
         
-      - name: Subir Grafico de Energia
+      - name: Subir Artefactos (Graficos, Datos y Video)
         uses: actions/upload-artifact@v4
+        if: always() 
         with:
-          name: Grafico-Energia
-          path: energy_plot.png
+          name: entregables-laboratorio-1
+          path: |
+            *.png
+            *.mp4
+            *.dat
+          retention-days: 90

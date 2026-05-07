@@ -25,6 +25,8 @@ class Visualizer {
         void cerrarArchivo();
 
         void exportarEnergia(const simulation_data& data, const std::string& filename);
+
+        void exportarTrayectorias(const simulation_data& data, const std::string& filename);
 };
 
 #endif

@@ -42,8 +42,8 @@ int main(int argc, char* argv[]) {
         int max_hilos = 8; // Ajustar según tu CPU
         */
         int repeticiones = 5;      
-        int pasos_simulacion = 100;  
-        int num_particulas = 500;
+        int pasos_simulacion = 500;  
+        int num_particulas = 2000;
         int max_hilos = 8;
         cout << "Configuracion detectada:" << endl;
         cout << " - Particulas: " << num_particulas << endl;
@@ -80,14 +80,16 @@ int main(int argc, char* argv[]) {
     NBodySimulator simulator(&system, dt);
     
     // Ejecutar 1000 pasos y capturar datos
-    simulation_data data = simulator.processBodies(1000);
+    simulation_data data = simulator.processBodies(5000);
 
     // Guardar resultados para análisis físico
     Visualizer vis;
     vis.exportarEnergia(data, "energy_timeseries.dat");
+    vis.exportarTrayectorias(data, "trajectories.dat");
     
     cout << "Simulacion completada exitosamente." << endl;
     cout << "Archivo 'energy_timeseries.dat' generado para graficar." << endl;
+    cout << "Archivo 'trajectories.dat' generado para graficar." << endl;
 
     return 0;
 }

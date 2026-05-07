@@ -12,6 +12,8 @@ RUN apt-get update \
     git \
     python3 \
     python3-matplotlib \
+    python3-pandas \
+    ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 # Google Test en Ubuntu instala el codigo fuente.

@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -O3 -fopenmp -std=c++17
 LDFLAGS = -fopenmp
 TARGET = nbody_2d
-SOURCES = main.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp Integrator.cpp MetricsCalculator.cpp Benchmark.cpp Visualizer.cpp
+SOURCES = Altmain.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp Integrator.cpp MetricsCalculator.cpp Benchmark.cpp Visualizer.cpp
 HEADERS = Particle.h NBodySystem.h NBodySimulator.h Integrator.h MetricsCalculator.h Benchmark.h Visualizer.h
 
 $(TARGET): $(SOURCES) $(HEADERS)
