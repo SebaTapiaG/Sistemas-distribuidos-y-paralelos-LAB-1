@@ -20,9 +20,10 @@ TEST(MetricsCalculatorTest, BasicStatistics) {
 TEST(MetricsCalculatorTest, PerformanceAnalysis) {
     std::vector<double> t1_times = {100.0, 102.0, 98.0, 101.0, 99.0};
     std::vector<double> tp_times = {25.0, 26.0, 24.0, 25.5, 24.5};
+    std::vector<double> ts_times = {5.0, 5.5, 4.5, 5.2, 4.8}; // Ejemplo de tiempos seriales adicionales
     int p = 4;
 
-    PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, p);
+    PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
 
     // Speedup esperado aprox: 100 / 25 = 4.0
     EXPECT_NEAR(res.speedup, 4.0, 0.2);
