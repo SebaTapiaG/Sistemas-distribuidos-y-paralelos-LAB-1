@@ -140,11 +140,11 @@ TEST_F(NBodySimulatorTest, ProcessBodiesTaskTypes) {
     system->addParticle(Particle(1.0, 1.0, 0.0));
 
     ASSERT_NO_THROW({
-        simulation_data d = simulator->processBodies(3, 0);  // tasks
+        simulation_data d = simulator->processBodies(3, 0, 1, 0, 0, 100);  // tasks
         EXPECT_EQ((int)d.bodies.size(), 3);
     });
     ASSERT_NO_THROW({
-        simulation_data d = simulator->processBodies(3, 1);  // parallel_for
+        simulation_data d = simulator->processBodies(3, 1, 1, 0, 0, 100);  // parallel_for
         EXPECT_EQ((int)d.bodies.size(), 3);
     });
 }
@@ -179,7 +179,7 @@ TEST_F(NBodySimulatorTest, TaskAndParallelForGiveSameResult) {
     sysB.addParticle(Particle(1.0, 0.0, 0.0));
     sysB.addParticle(Particle(2.0, 1.0, 0.5));
     NBodySimulator simB(&sysB, deltaT);
-    simB.processBodies(iters, 1);
+    simB.processBodies(iters, 1, 1, 0, 0, 100);
 
     EXPECT_NE(sysB.getBodies()[0].getX(), 0.0) << "parallel_for debe mover particulas";
 
@@ -190,7 +190,7 @@ TEST_F(NBodySimulatorTest, TaskAndParallelForGiveSameResult) {
     NBodySimulator simA(&sysA, deltaT);
     
     // Ya no usamos ASSERT_NO_THROW para ocultar el error, ahora exigimos que funcione
-    simA.processBodies(iters, 0);
+    simA.processBodies(iters, 0, 1, 0, 0, 100);
     EXPECT_NE(sysA.getBodies()[0].getX(), 0.0) << "tasks ahora debe mover particulas";
 
     // 3. Verificamos que ambos métodos de paralelización producen la misma física

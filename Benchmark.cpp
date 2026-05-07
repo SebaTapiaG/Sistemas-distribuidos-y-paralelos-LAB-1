@@ -78,7 +78,7 @@ simulation_data Benchmark::runScalabilityTest(int max_threads, int num_particles
             double parallelStart = omp_get_wtime();
             serialsum += omp_get_wtime() - serialStart; // Tiempo de setup (serial)
 
-            simulation_data data = sim.processBodies(steps, sync_type);
+            simulation_data data = sim.processBodies(steps, sync_type, 1, 0, 0, 100);
 
             serialStart = omp_get_wtime();
             tp_times.push_back(omp_get_wtime() - parallelStart);

@@ -36,7 +36,7 @@ class NBodySimulator {
         */
         simulation_data processBodies(int iter);
         simulation_data processBodies(int iter, int task_type); // task=0, parallel_for=1
-        simulation_data processBodies(int iter, int task_type, bool use_single);
+        simulation_data processBodies(int iter, int task_type, int sync_type, int method, int schedule_type, int chunk_size);
         void simulatePhasesBarrier();
         void parallelInitializationSingle();
 };

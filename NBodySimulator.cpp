@@ -16,57 +16,29 @@ void NBodySimulator::integrateEuler(){
     system->computeAccelerations();
     for(auto &particle : system->getBodies()){
 
-        particle.setVx(particle.getVx()+particle.getAx()*time_step);
-        particle.setVy(particle.getVy()+particle.getAy()*time_step);
-
-        particle.setX(particle.getX()+particle.getVx()*time_step);
-        particle.setY(particle.getY()+particle.getVy()*time_step);
+        particle.kick(time_step);
+        particle.drift(time_step);
     }
 }
 
-// ── 0. Atomic 1. Critical 2. Nowait
+// ── 1. Critical 2. Nowait
 void NBodySimulator::integrateEuler(int sync_type){
     auto& bodies = system->getBodies();
     switch(sync_type){
 
         // atomic
         case 0:
-        /*
-            #pragma omp parallel for
-            for(size_t i = 0; i < bodies.size(); ++i) {
-                double new_vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
-                double new_vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
-                double new_x = bodies[i].getX() + new_vx * time_step;
-                double new_y = bodies[i].getY() + new_vy * time_step;
-
-                Cambiar esto, porque atomic write no acepta setters
-
-                #pragma omp atomic write
-                bodies[i].setVx(new_vx);
-                #pragma omp atomic write
-                bodies[i].setVy(new_vy);
-                #pragma omp atomic write 
-                bodies[i].setX(new_x);
-                #pragma omp atomic write
-                bodies[i].setY(new_y);
-            }*/
+        integrateEuler();
             break;
 
         // critical
         case 1:
             #pragma omp parallel for
             for(size_t i = 0; i < bodies.size(); ++i) {
-                double new_vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
-                double new_vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
-                double new_x = bodies[i].getX() + new_vx * time_step;
-                double new_y = bodies[i].getY() + new_vy * time_step;
-
                 #pragma omp critical
                 {
-                    bodies[i].setVx(new_vx);
-                    bodies[i].setVy(new_vy);
-                    bodies[i].setX(new_x);
-                    bodies[i].setY(new_y);
+                    bodies[i].kick(time_step);
+                    bodies[i].drift(time_step);
                 }
             }
             break;
@@ -77,13 +49,8 @@ void NBodySimulator::integrateEuler(int sync_type){
             {
                 #pragma omp for nowait
                 for(size_t i = 0; i < bodies.size(); ++i) {
-                    double vx = bodies[i].getVx() + bodies[i].getAx() * time_step;
-                    double vy = bodies[i].getVy() + bodies[i].getAy() * time_step;
-                    
-                    bodies[i].setVx(vx);
-                    bodies[i].setVy(vy);
-                    bodies[i].setX(bodies[i].getX() + vx * time_step);
-                    bodies[i].setY(bodies[i].getY() + vy * time_step);
+                    bodies[i].kick(time_step);
+                    bodies[i].drift(time_step);
                 }
             }
             break;
@@ -125,31 +92,6 @@ pair<double, double> NBodySimulator::calculateEnergy() {
     k = k * 0.5;
     return {u, k};
 }
-
-/*pair<double, double> NBodySimulator::calculateEnergy(int method){
-    switch(method){
-        case 0:
-            calculateEnergy();
-            break;
-
-        case 1:
-            break;
-
-        default:
-            throw std::invalid_argument("method solo puede ser 0 o 1.");
-            break;
-    }
-}*/
-
-/*
-pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_private){
-    if(use_private){
-
-    }
-    else{
-        calculateEnergy(method);
-    }
-}*/
 
 // Versión serial
 simulation_data NBodySimulator::processBodies(int iter){
@@ -224,7 +166,8 @@ pair<double, double> NBodySimulator::calculateEnergy(int method) {
 }
 
 // ── processBodies usando paralelización exterior (Tasks vs Parallel For)
-simulation_data NBodySimulator::processBodies(int iter, int task_type) {
+simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_type, 
+    int method, int schedule_type, int chunk_size) {
     simulation_data data;
     data.u.resize(iter);
     data.k.resize(iter);
@@ -241,9 +184,7 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type) {
             {
                 #pragma omp single
                 {
-                    // computeAccelerations() tiene su propio parallel for interno
-                    // => no lanzar como task, llamar directamente desde single
-                    system->computeAccelerations();
+                    system->computeAccelerations(schedule_type, chunk_size);
                 }
                 // Barrera implicita del single: todos los hilos tienen las
                 // aceleraciones actualizadas antes de continuar.
@@ -266,15 +207,12 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type) {
             }
  
         } else {
-            // ── Enfoque con parallel for (task_type == 1) ─────────────────
-            system->computeAccelerations(0);
-            
-            // Usamos la versión paralela nowait (2) o critical (1)
-            integrateEuler(2);
+            system->computeAccelerations(schedule_type, chunk_size);
+            integrateEuler(sync_type);
         }
  
         // Energia: reduction (metodo 0) es el mas eficiente para sumas globales
-        auto [ui, ki] = calculateEnergy(0);
+        auto [ui, ki] = calculateEnergy(method);
         data.u[i] = ui;
         data.k[i] = ki;
         data.bodies[i] = system->getBodies();
@@ -302,14 +240,9 @@ void NBodySimulator::simulatePhasesBarrier() {
  
         #pragma omp for schedule(static)
         for (int i = 0; i < N; ++i) {
-            // kick: v += a * dt
-            bodies[i].setVx(bodies[i].getVx() + bodies[i].getAx() * time_step);
-            bodies[i].setVy(bodies[i].getVy() + bodies[i].getAy() * time_step);
-            // drift: r += v * dt  (usa la velocidad YA actualizada — Euler)
-            bodies[i].setX(bodies[i].getX() + bodies[i].getVx() * time_step);
-            bodies[i].setY(bodies[i].getY() + bodies[i].getVy() * time_step);
+            bodies[i].kick(time_step);
+            bodies[i].drift(time_step);
         }
-        // Barrera implicita al final del #pragma omp for
     }
 }
 
