@@ -109,5 +109,46 @@ TEST(VisualizerTest, CapturaEstadoDeSimulacionMainLike) {
     std::remove(kSnapshotFile);
 }
 
+TEST(VisualizerTest, ExportarTrayectoriasEscribeFormatoCorrecto) {
+    Visualizer vis;
+    simulation_data data;
+    std::string test_filename = "test_trayectorias.dat";
+
+    // 1. Setup: Crear un estado de simulación falso (mock)
+    std::vector<Particle> particulas_paso_cero;
+    Particle p1(5.0, 10.0, -10.0); 
+    particulas_paso_cero.push_back(p1);
+    
+    data.bodies.push_back(particulas_paso_cero);
+
+    // 2. Ejecución: Llamar a la nueva función
+    vis.exportarTrayectorias(data, test_filename);
+
+    // 3. Verificación (Asserts)
+    std::ifstream f(test_filename);
+    ASSERT_TRUE(f.is_open()) << "Error: El archivo de trayectorias no se genero.";
+
+    std::string header;
+    std::getline(f, header);
+    // Verificar que el encabezado tiene la nueva columna ID para que el subsampling en Python funcione
+    EXPECT_EQ(header, "# Paso ID Masa X Y Vx Vy");
+
+    // Verificar los datos de la partícula
+    int step, id;
+    double mass, x, y, vx, vy;
+    f >> step >> id >> mass >> x >> y >> vx >> vy;
+
+    EXPECT_EQ(step, 0);
+    EXPECT_EQ(id, 0);
+    EXPECT_DOUBLE_EQ(mass, p1.getMass());
+    EXPECT_DOUBLE_EQ(x, p1.getX());
+    EXPECT_DOUBLE_EQ(y, p1.getY());
+    
+    f.close();
+
+    // 4. Limpieza
+    std::remove(test_filename.c_str());
+}
+
 }  // namespace
 
