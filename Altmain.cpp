@@ -14,10 +14,14 @@ using namespace std;
  * Función de ayuda para imprimir el uso del programa
  */
 void printUsage(char* programName) {
-    cout << "Uso sugerido:" << endl;
-    cout << "  Simulacion estandar: " << programName << endl;
-    cout << "  Modo Benchmark:      " << programName << " -benchmark [sync_type]" << endl;
-    cout << "    * sync_type: 0 para Atomic, 1 para Reduction, etc." << endl;
+    cout << "Uso modo Benchmark:" << endl;
+    cout << "  " << programName << " -benchmark [task_type] [sync_type] [energy_method] [sched] [chunk]" << endl;
+    cout << endl << "  Parametros:" << endl;
+    cout << "  task_type:     0: Tasks, 1: Parallel For" << endl;
+    cout << "  sync_type:     0: Atomic, 1: Critical, 2: Nowait" << endl;
+    cout << "  energy_method: 0: Reduction, 1: Atomic" << endl;
+    cout << "  sched:         0: Static, 1: Dynamic, 2: Guided" << endl;
+    cout << "  chunk:         Tamano del chunk (ej: 1, 10, 100)" << endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -30,9 +34,19 @@ int main(int argc, char* argv[]) {
     // --- ESCENARIO 1: MODO BENCHMARK ---
     if (argc > 1 && string(argv[1]) == "-benchmark") {
         cout << ">>> Iniciando Protocolo de Benchmark <<<" << endl;
-        
-        // Capturamos el tipo de sincronización (por defecto 0)
-        int sync_method = (argc > 2) ? stoi(argv[2]) : 0;
+        /*
+        Entradas aceptadas:
+        - task_type: 0 para Tasks, 1 para Parallel For
+        - sync_type: 0 para Atomic, 1 para Critical, 2 para Nowait
+        - energy_method: 0 para Reduction, 1 para Atomic
+        - sched: 0 para Static, 1 para Dynamic, 2 para Guided
+        - chunk: tamaño del chunk para el scheduler (ej: 1, 10, 100)
+        */
+        int task_type     = (argc > 2) ? stoi(argv[2]) : 1; // Default: Parallel For
+        int sync_method   = (argc > 3) ? stoi(argv[3]) : 0; // Default: Atomic
+        int energy_method = (argc > 4) ? stoi(argv[4]) : 0; // Default: Reduction
+        int sched_type    = (argc > 5) ? stoi(argv[5]) : 0; // Default: Static
+        int chunk_size    = (argc > 6) ? stoi(argv[6]) : 0; // Default: 0 (tamaño automático según el scheduler)
         
         // Configuración del experimento
         /*
@@ -53,8 +67,17 @@ int main(int argc, char* argv[]) {
 
         Benchmark bm(repeticiones, pasos_simulacion, dt, global_seed);
         
-        // Esta llamada ejecutara: 1. Serial Pura -> 2. Hilos OpenMP (1, 2, 4, 8...)
-        bm.runScalabilityTest(max_hilos, num_particulas, sync_method);
+        bm.runScalabilityTest(
+            max_hilos, 
+            num_particulas, 
+            task_type, 
+            sync_method, 
+            energy_method, 
+            sched_type, 
+            chunk_size, 
+            G, 
+            epsilon
+        );
 
         cout << ">>> Benchmark finalizado. Revisa los archivos .dat para el informe." << endl;
         return 0;

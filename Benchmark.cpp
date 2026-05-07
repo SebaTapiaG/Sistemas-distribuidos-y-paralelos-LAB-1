@@ -6,11 +6,15 @@
 #include <iomanip>
 //
 Benchmark::Benchmark(int reps, int s, double delta_t, unsigned int s_seed) 
-    : repetitions(reps), steps(s), dt(delta_t), seed(s_seed) {}
-std::string Benchmark::generateFileName(std::string prefix, int sync, int sched, int chunk) {
-    return prefix + "_s" + std::to_string(sync) + 
-           "_h" + std::to_string(sched) + 
-           "_k" + std::to_string(chunk) + ".dat";
+    : repetitions(reps), steps(s), dt(delta_t), seed(s_seed) {
+}
+
+std::string Benchmark::generateFileName(std::string prefix, int sync_type, int task_type, int energy_method, int schedule_type, int chunk_size) {
+    return prefix + "_s" + std::to_string(sync_type) + 
+           "_h" + std::to_string(task_type) + 
+           "_k" + std::to_string(energy_method) +
+           "_sched" + std::to_string(schedule_type) +
+           "_chunk" + std::to_string(chunk_size) + ".dat";
 }
 
 void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
@@ -23,71 +27,79 @@ void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
     }
 }
 
-simulation_data Benchmark::runScalabilityTest(int max_threads, int num_particles, int sync_type) {
-    std::ofstream resFile("benchmark_results.dat", std::ios::app);
-    std::ofstream scalFile("scaling_analysis.dat", std::ios::app);
-    
-    // Anchos Columna
-    const int W_S = 6;  // Sync
-    const int W_H = 8;  // Threads
-    const int W_D = 20; // Datos (Double)
+simulation_data Benchmark::runScalabilityTest(
+    int max_threads, int num_particles, int task_type, 
+    int sync_type, int energy_method, int schedule_type, 
+    int chunk_size, double G, double epsilon)
+{
 
-    auto checkHeader = [&](std::ofstream& f, std::vector<std::string> cols) {
-        f.seekp(0, std::ios::end);
-        if (f.tellp() == 0) {
-            f << "# ";
-            f << std::left << std::setw(W_S-2) << cols[0]; // Ajuste por el "# "
-            for(size_t i=1; i<cols.size(); ++i) f << std::setw(W_D) << cols[i];
-            f << std::endl;
-        }
-    };
+    // Generar nombres de archivo únicos para esta combinación
+    std::string resFileName = generateFileName("bench_results", sync_type, task_type, energy_method, schedule_type, chunk_size);
+    std::string scalFileName = generateFileName("scaling_analysis", sync_type, task_type, energy_method, schedule_type, chunk_size);
 
-    // Encabezados con anchos rígidos
-    checkHeader(resFile, {"Sync", "Threads", "T_Sim_Avg", "T_Sim_StdDev"});
-    checkHeader(scalFile, {"Sync", "Threads", "Speedup", "Sigma_Sp", "Serial_F", "Theo_Sp", "Efficiency", "Sigma_Eff"});
-    // --- 1. EJECUCIÓN SERIAL PURA (T1) ---
+    std::ofstream resFile(resFileName, std::ios::app);
+    std::ofstream scalFile(scalFileName, std::ios::app);
+
+
+    const int W_S = 10; // Para Sync Type
+    const int W_H = 8;  // Para Threads
+    const int W_D = 15; // Para Datos (Double)
+    resFile << std::left << std::setw(W_S) << "SyncType" 
+        << std::setw(W_H) << "Threads" 
+        << std::setw(W_D) << "MeanTime" 
+        << std::setw(W_D) << "StdDev" << std::endl;
+    scalFile << std::left << std::setw(W_S) << "SyncType" 
+         << std::setw(W_H) << "Threads" 
+         << std::setw(W_D) << "Speedup" 
+         << std::setw(W_D) << "SigmaSpeedup"
+         << std::setw(W_D) << "SerialFrac" 
+         << std::setw(W_D) << "SigmaSerialFrac"
+         << std::setw(W_D) << "TheoSpeedup"
+         << std::setw(W_D) << "SigmaTheoSpeedup"
+         << std::setw(W_D) << "Efficiency"
+         << std::setw(W_D) << "SigmaEfficiency" << std::endl;
+    // Estructura para almacenar los resultados finales de la última simulación
+    simulation_data final_data;
+    //Ejecucion serial T1
     std::vector<double> t1_times;
-    std::cout << "Midiendo referencia Serial (T1)..." << std::endl;
     for (int r = 0; r < repetitions; ++r) {
+        //toma de tiempo inicial serial
         double start = omp_get_wtime();
-        NBodySystem system(1.0, 10.0);
+
+        NBodySystem system(G, epsilon);
         setupRandomSystem(system, num_particles);
-        NBodySimulator sim(&system, dt);
-        sim.processBodies(steps); 
+        NBodySimulator simulator(&system, dt);
+        simulator.processBodies(steps); // Ejecución serial
+
         t1_times.push_back(omp_get_wtime() - start);
     }
 
-    // --- 2. BUCLE DE HILOS (Tp) ---
+    //bucle paralelo Tp ( threads desde 1 a max_threads, multiplicando por 2)
     for (int p = 1; p <= max_threads; p *= 2) {
-        //tiempo serial
+        //Tiempo serial Ts y Tiempo paralelo Tp
         std::vector<double> ts_times;
-        //tiempo paralelo
         std::vector<double> tp_times;
-        std::cout << "Corriendo con " << p << " hilos..." << std::endl;
         omp_set_num_threads(p);
 
         for (int r = 0; r < repetitions; ++r) {
-            //Medicion de tiempos seriales
+            //contador de tiempo serial.
             double serialsum = 0.0;
             double serialStart = omp_get_wtime();
-
-            NBodySystem system(1.0, 10.0);
+            //setup
+            NBodySystem system(G, epsilon);
             setupRandomSystem(system, num_particles);
-            NBodySimulator sim(&system, dt);
-
+            NBodySimulator simulator(&system, dt);
+            serialsum += omp_get_wtime() - serialStart;
+            //fin de setup y toma de tiempo serial
             double parallelStart = omp_get_wtime();
-            serialsum += omp_get_wtime() - serialStart; // Tiempo de setup (serial)
-
-            simulation_data data = sim.processBodies(steps, sync_type, 1, 0, 0, 100);
-
-            serialStart = omp_get_wtime();
+            final_data = simulator.processBodies(steps, task_type, sync_type, 
+            energy_method, schedule_type, chunk_size);
             tp_times.push_back(omp_get_wtime() - parallelStart);
-            serialsum += omp_get_wtime() - serialStart; // Tiempo de teardown (serial)
             ts_times.push_back(serialsum);
-
         }
-        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
 
+        // Cálculo de métricas con propagación de errores
+        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
 
         resFile << std::left << std::setw(W_S)  << sync_type 
                 << std::setw(W_H)  << p 
@@ -111,8 +123,8 @@ simulation_data Benchmark::runScalabilityTest(int max_threads, int num_particles
         resFile.flush();
         scalFile.flush();
     }
-    
-    resFile.close();
     scalFile.close();
-    return simulation_data(); // Devolver los datos de la simulación
+    resFile.close();
+
+    return final_data;
 }
