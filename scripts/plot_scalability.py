@@ -7,17 +7,18 @@ hilos, speedup, sigma_sp, theo_sp = [], [], [], []
 try:
     with open(filename, 'r') as f:
         for line in f:
-            # Ignorar cabeceras (comienzan con #) o líneas vacías
-            if line.startswith('#') or line.strip() == "":
+            if line.startswith('#') or line.strip() == "" or line.startswith('Sync'):
                 continue
             
             valores = line.split()
-            # Asegurarnos de que la línea tiene las 8 columnas del C++
-            if len(valores) >= 8:
-                hilos.append(int(valores[1]))         # Columna 1: Threads
-                speedup.append(float(valores[2]))     # Columna 2: Speedup Real
-                sigma_sp.append(float(valores[3]))    # Columna 3: Error de Speedup
-                theo_sp.append(float(valores[5]))     # Columna 5: Speedup Teórico (Amdahl)
+            if len(valores) >= 12:
+                sched = int(valores[1])
+                # Filtramos SOLO el caso base (Static)
+                if sched == 0:
+                    hilos.append(int(valores[3]))         # Threads
+                    speedup.append(float(valores[4]))     # Speedup
+                    sigma_sp.append(float(valores[5]))    # Error
+                    theo_sp.append(float(valores[8]))
     
     # 2. Configurar el gráfico
     plt.figure(figsize=(10, 6))

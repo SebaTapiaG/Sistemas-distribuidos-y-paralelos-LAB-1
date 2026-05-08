@@ -6,14 +6,16 @@ hilos, eficiencia, sigma_eff = [], [], []
 try:
     with open(filename, 'r') as f:
         for line in f:
-            if line.startswith('#') or line.strip() == "":
+            if line.startswith('#') or line.strip() == "" or line.startswith('Sync'):
                 continue
             
             valores = line.split()
-            if len(valores) >= 8:
-                hilos.append(int(valores[1]))          # Columna 1: Threads
-                eficiencia.append(float(valores[6]))   # Columna 6: Eficiencia
-                sigma_eff.append(float(valores[7]))    # Columna 7: Error de Eficiencia
+            if len(valores) >= 12:
+                sched = int(valores[1])
+                if sched == 0:
+                    hilos.append(int(valores[3]))          
+                    eficiencia.append(float(valores[10]))  # Eficiencia en la 10
+                    sigma_eff.append(float(valores[11]))    # Columna 7: Error de Eficiencia
     
     plt.figure(figsize=(10, 6))
     

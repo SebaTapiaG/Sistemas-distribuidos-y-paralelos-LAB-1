@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
         */
         int repeticiones = 5;      
         int pasos_simulacion = 500;  
-        int num_particulas = 2000;
+        int num_particulas = 1000;
         int max_hilos = 8;
         cout << "Configuracion detectada:" << endl;
         cout << " - Particulas: " << num_particulas << endl;
