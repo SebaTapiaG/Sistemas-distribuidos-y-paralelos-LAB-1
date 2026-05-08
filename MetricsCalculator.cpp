@@ -103,7 +103,7 @@ double MetricsCalculator::estimateSerialFractionByTime(double t1, double tp){
     if (t1 <= 0 || tp <= 0){
         return 1.0;
     }
-    double f = (t1 - tp) / t1;
+    double f = tl/(tl+tp);
     return (f < 0) ? 0 : f; // Ajuste por ruido experimental
 }
 double MetricsCalculator::calculateTheoricalSpeedup(double f, int p) {
