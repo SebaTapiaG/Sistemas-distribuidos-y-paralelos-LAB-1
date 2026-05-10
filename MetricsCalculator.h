@@ -64,7 +64,15 @@ class MetricsCalculator {
         static double estimateSerialFraction(double speedup, int p);
         static double estimateSerialFractionByTime(double t1, double tp);
         static double calculateTheoricalSpeedup(double f, int p);
-
+        static PerformanceResult analyzePerformanceFirstPrivate(const std::vector<double>& t1_times, 
+                                                const std::vector<double>& tp_times,
+                                                const std::vector<double>& ts_times,
+                                                int num_threads);
+        //Sobrecarga para seleccionar entre métodos de análisis (ej: sin firstprivate (0), con firstprivate (1))
+        static PerformanceResult analyzePerformance(const std::vector<double>& t1_times, 
+                                                const std::vector<double>& tp_times, 
+                                                const std::vector<double>& ts_times,
+                                                int num_threads, int mode);
         static MomentumResult calculateMomentum(const std::vector<Particle>& bodies);
 };
 

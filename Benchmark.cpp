@@ -27,7 +27,7 @@ void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
 simulation_data Benchmark::runScalabilityTest(
     int max_threads, int num_particles, int task_type, 
     int sync_type, int energy_method, int schedule_type, 
-    int chunk_size, double G, double epsilon, bool perform_diagnostics)
+    int chunk_size, double G, double epsilon, bool perform_diagnostics, int mode)
 {
     if(perform_diagnostics){//fase de diagnostico.
     NBodySystem sys_diag(G, epsilon);
@@ -128,7 +128,7 @@ simulation_data Benchmark::runScalabilityTest(
             ts_times.push_back(serialsum);
         }
 
-        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
+        PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p, mode);
 
         resFile << std::left << std::setw(W_S)  << sync_type 
                 << std::setw(W_H)  << p 

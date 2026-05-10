@@ -20,6 +20,16 @@ double MetricsCalculator::calculateStdDev(const std::vector<double>& times, doub
     double stddev = std::sqrt(sq_sum / (times.size() - 1)); 
     return stddev;
 }
+PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
+                                                      const std::vector<double>& tp_times, 
+                                                      const std::vector<double>& ts_times,
+                                                      int num_threads, int mode) {
+    if (mode == 0) {
+        return analyzePerformance(t1_times, tp_times, ts_times, num_threads);
+    } else {
+        return analyzePerformanceFirstPrivate(t1_times, tp_times, ts_times, num_threads);
+    }
+}
 
 PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
                                                       const std::vector<double>& tp_times,
@@ -56,6 +66,58 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     res.sigma_serial_fraction = res.serial_fraction*(std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp));
     res.sigma_theorical_speedup =  res.theorical_speedup*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
 
+    return res;
+}
+//Reemplazo de calculateMetricsFirstPrivate.
+PerformanceResult MetricsCalculator::analyzePerformanceFirstPrivate(
+    const std::vector<double>& t1_times, 
+    const std::vector<double>& tp_times,
+    const std::vector<double>& ts_times,
+    int num_threads) 
+{
+    std::cout<< "Analisis de rendimiento utilizando FirstPrivate para el cálculo de desviaciones estándar..." << std::endl;
+    PerformanceResult res;
+    double t1 = calculateMean(t1_times);
+    double tp = calculateMean(tp_times);
+    double ts = calculateMean(ts_times);
+    
+    int n = tp_times.size();
+    double t1_stdDev = 0.0;
+    double tp_stdDev = 0.0;
+    double ts_stdDev = 0.0;
+    double speedup = t1 / tp;
+    //se paraleliza el cálculo de las desviaciones estándar usando firstprivate 
+    //para las medias y reduction para acumular las sumas de cuadrados de las diferencias
+    #pragma omp parallel for firstprivate(t1, tp, ts) reduction(+:t1_stdDev, tp_stdDev, ts_stdDev)
+    for (int i = 0; i < n; ++i) {
+        t1_stdDev += (t1_times[i] - t1) * (t1_times[i] - t1);
+        tp_stdDev += (tp_times[i] - tp) * (tp_times[i] - tp);
+        ts_stdDev += (ts_times[i] - ts) * (ts_times[i] - ts);
+    }
+    double sigma_t1 = std::sqrt(t1_stdDev / (n - 1));
+    double sigma_tp = std::sqrt(tp_stdDev / (n - 1));
+    double sigma_ts = std::sqrt(ts_stdDev / (n - 1));
+    double tf= estimateSerialFractionByTime(t1, tp);
+    double theorical_speedup = calculateTheoricalSpeedup(tf, num_threads);
+    
+    res.mean_time = tp;
+    res.std_dev = sigma_tp;
+    res.speedup = speedup;
+    double f = estimateSerialFraction(res.speedup, num_threads);
+    res.serial_fraction = f;
+    res.theorical_serial_fraction = tf;
+    res.theorical_speedup = theorical_speedup;
+    // Propagación de error: sigma_Sp = Sp * sqrt((sigma_t1/t1)^2 + (sigma_tp/tp)^2)
+    // Esto es vital para las barras de error en tus gráficos
+    double rel_err_t1 = (t1 > 0) ? (sigma_t1 / t1) : 0;
+    double rel_err_tp = (tp > 0) ? (sigma_tp / tp) : 0;
+    double rel_err_ts = (ts > 0) ? (sigma_ts / ts) : 0;
+    res.sigma_speedup = res.speedup * std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp);
+    res.efficiency = res.speedup / num_threads;
+    res.sigma_efficiency = res.sigma_speedup / num_threads;
+    res.sigma_serial_fraction = res.serial_fraction*(std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp));
+    res.sigma_theorical_speedup =  res.theorical_speedup*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
+    // ... (puedes incluir aquí el resto de tus cálculos de sigma)
     return res;
 }
 

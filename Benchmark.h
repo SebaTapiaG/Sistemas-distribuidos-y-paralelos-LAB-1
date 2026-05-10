@@ -29,7 +29,8 @@ public:
         int chunk_size, 
         double G, 
         double epsilon,
-        bool perform_diagnostics = false // Nuevo: Controla si se ejecuta la fase de diagnóstico
+        bool perform_diagnostics = false, // Nuevo: Controla si se ejecuta la fase de diagnóstico
+        int mode = 0 // Nuevo: Selecciona el método de análisis de rendimiento (0=sin firstprivate, 1=con firstprivate)
     );
 
     void setupRandomSystem(NBodySystem& system, int n);
