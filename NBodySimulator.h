@@ -39,6 +39,10 @@ class NBodySimulator {
         simulation_data processBodies(int iter, int task_type, int sync_type, int method, int schedule_type, int chunk_size);
         void simulatePhasesBarrier();
         void parallelInitializationSingle();
+
+        // Métodos dedicados a demostrar cláusulas puntuales
+        double calculateMetricsFirstprivate();
+        double calculateFinalStateLastprivate();
 };
 
 #endif

@@ -65,8 +65,11 @@ void NBodySimulator::integrateEuler(int sync_type, bool use_barrier){
     integrateEuler(sync_type); // Primero movemos las partículas
     
     if(use_barrier){
+        #pragma omp parallel
+        {
         // Si estamos dentro de una región paralela, forzamos la barrera
         #pragma omp barrier 
+        }
     }
 }
 
@@ -258,4 +261,46 @@ void NBodySimulator::parallelInitializationSingle() {
         }
         // Aquí hay una barrera implícita: los demás hilos esperan a que el hilo 'single' termine.
     }
+}
+
+
+// Utiliza una variable inicializada antes de la región paralela y entrega 
+// una copia a cada hilo con ese valor inicial.
+double NBodySimulator::calculateMetricsFirstprivate() {
+    // Valor base que queremos que todos los hilos tengan al iniciar su trabajo
+    double factor_inicial = 10.0; 
+    double metrica_total = 0.0;
+    const auto& bodies = system->getBodies();
+
+    // firstprivate asegura que cada hilo empiece con su propia copia de 
+    // 'factor_inicial' valiendo exactamente 10.0
+    #pragma omp parallel for firstprivate(factor_inicial) reduction(+:metrica_total)
+    for (size_t i = 0; i < bodies.size(); ++i) {
+        // Cada hilo modifica su propia copia de factor_inicial sin afectar a los demás
+        factor_inicial += bodies[i].getMass(); 
+        
+        // Sumamos a una métrica global
+        metrica_total += factor_inicial;
+    }
+    
+    return metrica_total;
+}
+
+// ── Demostración de lastprivate ──────────────────────────────────────────────
+// Obtiene el valor de una variable tal como quedó en la ÚLTIMA iteración 
+// lógica del ciclo (i == N - 1), llevándola al ámbito externo.
+double NBodySimulator::calculateFinalStateLastprivate() {
+    double ultimo_x = -1.0; 
+    const auto& bodies = system->getBodies();
+
+    // lastprivate asegura que, al terminar el parallel for, 'ultimo_x' 
+    // conserve el valor que se le asignó en la iteración i = bodies.size() - 1
+    #pragma omp parallel for lastprivate(ultimo_x)
+    for (size_t i = 0; i < bodies.size(); ++i) {
+        ultimo_x = bodies[i].getX();
+    }
+    
+    // Al terminar, ultimo_x es garantizadamente la posición X de la última 
+    // partícula procesada, sin importar qué hilo ejecutó esa última iteración.
+    return ultimo_x;
 }

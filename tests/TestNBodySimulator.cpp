@@ -221,3 +221,35 @@ TEST_F(NBodySimulatorTest, LinearMomentumIsConserved) {
     EXPECT_NEAR(px_final, px0, 1e-9);
     EXPECT_NEAR(py_final, py0, 1e-9);
 }
+
+// ── 13. Demostración de firstprivate ─────────────────────────────────────────
+TEST_F(NBodySimulatorTest, FirstprivateMetricExecution) {
+    system->addParticle(Particle(1.0, 0.0, 0.0));
+    system->addParticle(Particle(2.0, 1.0, 1.0));
+    
+    // firstprivate asegura que cada hilo comience con factor_inicial = 10.0.
+    // Como el resultado exacto depende de cómo OpenMP divida las iteraciones 
+    // entre los hilos, no evaluamos un número exacto estático, sino que 
+    // verificamos que la reducción ocurra correctamente y el valor sea > 0.
+    ASSERT_NO_THROW({
+        double metrica = simulator->calculateMetricsFirstprivate();
+        // Como el factor inicia en 10.0 y las masas son > 0, la suma 
+        // reducida siempre será estrictamente mayor a 10.0.
+        EXPECT_GT(metrica, 10.0); 
+    });
+}
+
+// ── 14. Demostración de lastprivate ──────────────────────────────────────────
+TEST_F(NBodySimulatorTest, LastprivateReturnsLastParticleX) {
+    // Agregamos tres partículas con coordenadas X claramente identificables
+    system->addParticle(Particle(1.0, 10.0, 0.0));
+    system->addParticle(Particle(1.0, 20.0, 0.0));
+    system->addParticle(Particle(1.0, 30.0, 0.0)); // <--- Esta es la última (i = 2)
+
+    // La cláusula 'lastprivate' obliga a que el hilo que ejecute la última 
+    // iteración (i = 2) sea el que copie su variable privada a la global.
+    double last_x = simulator->calculateFinalStateLastprivate();
+    
+    // Por lo tanto, sin importar cuántos hilos se usaron, last_x DEBE ser 30.0
+    EXPECT_DOUBLE_EQ(last_x, 30.0);
+}
