@@ -22,7 +22,8 @@
 Se reemplaza por analyzePerformanceFirstPrivate, esto para calcular la desviacion estandard en MetricsCalculator.
 Se utiliza first private para poder calcular este valor de manera paralela y ademas asegurar que los valores promedio de los tiempos se entreguen correctamente y que para cada hebra tenga su propia copia local a la hora de ejecutar los calculos
 Por defecto se usa la version normal de analyzePerformance, para usarla, cambiar el valor por defecto del metodo runScalabilityTest de mode a 1 en Benchmark.h.
-ejemplo:
+### Ejemplo:
+```cpp
 simulation_data runScalabilityTest(
         int max_threads, 
         int num_particles, 
@@ -33,7 +34,6 @@ simulation_data runScalabilityTest(
         int chunk_size, 
         double G, 
         double epsilon,
-        bool perform_diagnostics = false, // Nuevo: Controla si se ejecuta la fase de diagnóstico
-        int mode = 1
+        bool perform_diagnostics = false, //no ejecutara la fucnion de diagnostico con last private.
+        int mode = 1 //0= no ejecutara el calculo paralelo de stdev 1= calculo paralelo ejecutado.
     );
-
