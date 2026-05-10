@@ -35,14 +35,13 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
 
     double ts = calculateMean(ts_times);
     double sigma_ts = calculateStdDev(ts_times, ts);
-
-    double f = estimateSerialFraction(tp, num_threads);
     double tf= estimateSerialFractionByTime(t1, tp);
     double theorical_speedup = calculateTheoricalSpeedup(tf, num_threads);
     
     res.mean_time = tp;
     res.std_dev = sigma_tp;
     res.speedup = t1 / tp;
+    double f = estimateSerialFraction(res.speedup, num_threads);
     res.serial_fraction = f;
     res.theorical_serial_fraction = tf;
     res.theorical_speedup = theorical_speedup;
