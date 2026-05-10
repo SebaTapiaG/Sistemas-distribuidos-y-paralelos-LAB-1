@@ -253,3 +253,31 @@ TEST_F(NBodySimulatorTest, LastprivateReturnsLastParticleX) {
     // Por lo tanto, sin importar cuántos hilos se usaron, last_x DEBE ser 30.0
     EXPECT_DOUBLE_EQ(last_x, 30.0);
 }
+
+// ── 15. Verificación de equivalencia semántica: single vs single nowait + barrier ──
+TEST_F(NBodySimulatorTest, ProcessBodiesUseSingleEquivalence) {
+    const int iters = 4;
+    
+    // Ejecución A: con use_single = true (barrera implícita de OpenMP)
+    NBodySystem sysImplicit(1.0, 0.1);
+    sysImplicit.addParticle(Particle(1.0, 0.0, 0.0));
+    sysImplicit.addParticle(Particle(2.0, 1.0, 0.5));
+    NBodySimulator simImplicit(&sysImplicit, deltaT);
+    simImplicit.processBodies(iters, 0, true);
+
+    // Ejecución B: con use_single = false (single nowait + barrier explícita)
+    NBodySystem sysExplicit(1.0, 0.1);
+    sysExplicit.addParticle(Particle(1.0, 0.0, 0.0));
+    sysExplicit.addParticle(Particle(2.0, 1.0, 0.5));
+    NBodySimulator simExplicit(&sysExplicit, deltaT);
+    simExplicit.processBodies(iters, 0, false);
+
+    // Ambas ejecuciones DEBEN generar exactamente la misma evolución física.
+    // Comprobamos la posición final de las partículas en ambos universos.
+    for (size_t i = 0; i < sysImplicit.getBodies().size(); ++i) {
+        EXPECT_DOUBLE_EQ(sysImplicit.getBodies()[i].getX(), sysExplicit.getBodies()[i].getX());
+        EXPECT_DOUBLE_EQ(sysImplicit.getBodies()[i].getY(), sysExplicit.getBodies()[i].getY());
+        EXPECT_DOUBLE_EQ(sysImplicit.getBodies()[i].getVx(), sysExplicit.getBodies()[i].getVx());
+        EXPECT_DOUBLE_EQ(sysImplicit.getBodies()[i].getVy(), sysExplicit.getBodies()[i].getVy());
+    }
+}

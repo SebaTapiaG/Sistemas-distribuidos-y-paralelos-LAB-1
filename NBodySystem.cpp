@@ -84,7 +84,7 @@ void NBodySystem::computeAccelerations() {
     }
 }
 
-// ── Variantes con OpenMP (stubs para semana 2) ───────────────────────────────
+// ── Variantes con OpenMP ───────────────────────────────
 
 void NBodySystem::computeAccelerations(int schedule_type, int chunk_size) {
     const int N = static_cast<int>(bodies.size());
@@ -92,7 +92,7 @@ void NBodySystem::computeAccelerations(int schedule_type, int chunk_size) {
 
     zeroAccelerations();
 
-    // Configurar el schedule dinámicamente según el parámetro [cite: 761, 762]
+    // Configurar el schedule dinámicamente según el parámetro
     omp_sched_t kind;
     if (schedule_type == 0) kind = omp_sched_static;
     else if (schedule_type == 1) kind = omp_sched_dynamic;
@@ -101,7 +101,7 @@ void NBodySystem::computeAccelerations(int schedule_type, int chunk_size) {
 
     omp_set_schedule(kind, chunk_size > 0 ? chunk_size : 0);
 
-    // Paralelización del bucle externo [cite: 498]
+    // Paralelización del bucle externo 
     #pragma omp parallel for schedule(runtime)
     for (int i = 0; i < N; ++i) {
         double acc_x = 0.0;

@@ -168,6 +168,71 @@ pair<double, double> NBodySimulator::calculateEnergy(int method) {
     return {u, k};
 }
 
+// ── Demostración de la cláusula 'private' y Reducción Manual ─────────────────
+pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_private) {
+    if (!use_private) {
+        return calculateEnergy(method);
+    }
+
+    double k = 0.0;
+    double u = 0.0;
+    vector<Particle>& bodies = system->getBodies();
+
+    // Declaramos variables AFUERA. La cláusula 'private' las aislará luego.
+    size_t j;
+    double dx, dy, distSq;
+
+    if (method == 0) {
+        // method 0: Reduction (Optimización nativa de OpenMP)
+        #pragma omp parallel for reduction(+:k, u) private(j, dx, dy, distSq) schedule(dynamic)
+        for (size_t i = 0; i < bodies.size(); i++) {
+            k += bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+            
+            for (j = 0; j < i; j++) {
+                dx = bodies[j].getX() - bodies[i].getX();
+                dy = bodies[j].getY() - bodies[i].getY();
+                distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+            }
+        }
+    } else if (method == 1) {
+        // method 1: Atomic (Optimizado con Reducción Manual)
+        double local_k = 0.0;
+        double local_u = 0.0;
+
+        // firstprivate: Da a cada hilo su propia copia de local_k y local_u valiendo 0.0
+        // private: Aísla las variables de cálculo iterativo
+        #pragma omp parallel firstprivate(local_k, local_u) private(j, dx, dy, distSq)
+        {
+            #pragma omp for schedule(dynamic)
+            for (size_t i = 0; i < bodies.size(); i++) {
+                // Sumamos sin usar atomic aquí, cada hilo suma en su copia privada
+                local_k += bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+                
+                for (j = 0; j < i; j++) {
+                    dx = bodies[j].getX() - bodies[i].getX();
+                    dy = bodies[j].getY() - bodies[i].getY();
+                    distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                    local_u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+                }
+            }
+
+            // Fuera del for, pero dentro del parallel:
+            // Los hilos suman su sub-total a la variable compartida UNA sola vez por hilo.
+            #pragma omp atomic
+            k += local_k;
+            #pragma omp atomic
+            u += local_u;
+        }
+    } else {
+        throw std::invalid_argument("method solo puede ser 0 (reduction) o 1 (atomic).");
+    }
+
+    u = -1.0 * system->getG() * u;
+    k = k * 0.5;
+    return {u, k};
+}
+
 // ── processBodies usando paralelización exterior (Tasks vs Parallel For)
 simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_type, 
     int method, int schedule_type, int chunk_size) {
@@ -220,6 +285,73 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_
         data.k[i] = ki;
         data.bodies[i] = system->getBodies();
     }
+    return data;
+}
+
+// ── Sobrecarga processBodies para contrastar single vs single nowait ─────────
+simulation_data NBodySimulator::processBodies(int iter, int task_type, bool use_single) {
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    data.bodies.resize(iter);
+
+    for (int i = 0; i < iter; i++) {
+
+        if (task_type == 0) {
+            // Punteros y variables locales para ser capturadas de forma segura por firstprivate
+            NBodySystem* sys_ptr = system;
+            double dt = time_step;
+
+            #pragma omp parallel
+            {
+                // Fase 1: Cálculo de fuerzas contrastando barrera implícita vs explícita
+                if (use_single) {
+                    // Semántica 1: 'single' normal. 
+                    // OpenMP añade una barrera implícita invisible justo al cerrar la llave.
+                    #pragma omp single
+                    {
+                        sys_ptr->computeAccelerations();
+                    } 
+                } else {
+                    // Semántica 2: 'single nowait' + 'barrier' explícita.
+                    // El nowait quita la barrera implícita, delegando la responsabilidad al programador.
+                    #pragma omp single nowait
+                    {
+                        sys_ptr->computeAccelerations();
+                    }
+                    #pragma omp barrier
+                }
+
+                // Fase 2: Integración con una tarea por partícula
+                #pragma omp single
+                {
+                    const int M = sys_ptr->getBodies().size();
+                    for (int k = 0; k < M; ++k) {
+                        // firstprivate garantiza que el hilo que ejecuta la tarea tenga
+                        // una copia local e inmutable del índice 'k' y los punteros en ese instante.
+                        #pragma omp task firstprivate(k, sys_ptr, dt)
+                        {
+                            sys_ptr->getBodies()[k].kick(dt);
+                            sys_ptr->getBodies()[k].drift(dt);
+                        }
+                    }
+                    // taskwait asegura que todas las tareas terminen antes de pasar a la siguiente iteración
+                    #pragma omp taskwait
+                }
+            }
+        } else {
+            // Si no es task_type 0, usamos la lógica paralela estándar
+            system->computeAccelerations(0); 
+            integrateEuler(2);
+        }
+
+        // Medición de energía con reducción nativa y almacenamiento de la "foto" del instante
+        auto [ui, ki] = calculateEnergy(0);
+        data.u[i] = ui;
+        data.k[i] = ki;
+        data.bodies[i] = system->getBodies();
+    }
+    
     return data;
 }
 
