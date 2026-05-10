@@ -27,12 +27,45 @@ void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
 simulation_data Benchmark::runScalabilityTest(
     int max_threads, int num_particles, int task_type, 
     int sync_type, int energy_method, int schedule_type, 
-    int chunk_size, double G, double epsilon)
+    int chunk_size, double G, double epsilon, bool perform_diagnostics)
 {
+    if(perform_diagnostics){//fase de diagnostico.
+    NBodySystem sys_diag(G, epsilon);
+    setupRandomSystem(sys_diag, num_particles);
+    NBodySimulator sim_diag(&sys_diag, dt);
+    
+    // Un paso para asegurar que los cuerpos se muevan
+    sim_diag.integrateEuler(); 
+    // Verificamos la consistencia del último estado con el serial para validar la integridad de la ejecución paralela
+    DiagnosticResult diag = MetricsCalculator::verifyConsistency(sys_diag.getBodies());
+    // Obtenemos la referencia serial directamente para el log
+    Particle serial_ref = sys_diag.getBodies().back(); 
+
+    std::ofstream diagFile("execution_integrity.dat", std::ios::app);
+    diagFile << "=== VALIDACIÓN DE INTEGRIDAD (SERIAL VS PARALELO) ===\n";
+    diagFile << "Hilos: " << omp_get_max_threads() << " | N: " << num_particles << "\n";
+    diagFile << "Índice Final: " << diag.last_index << " (Esperado: " << num_particles-1 << ")\n";
+
+    diagFile << std::fixed << std::setprecision(4);
+    diagFile << "Masa Checksum  -> Serial: " << serial_ref.getMass() 
+            << " | Paralelo (lastprivate): " << diag.last_particle_state.getMass() << "\n";
+
+    diagFile << "Posición X     -> Serial: " << serial_ref.getX() 
+            << " | Paralelo (lastprivate): " << diag.last_particle_state.getX() << "\n";
+
+    diagFile << "Resultado: " << (diag.consistency_pass ? "INTEGRO" : "FALLIDO") << "\n";
+    diagFile << "----------------------------------------------------\n\n";
+    diagFile.close();
+    }
     // Usamos el rollback para centralizar todo en dos archivos
     std::string resFileName = generateFileName("bench_results", sync_type, task_type, energy_method, schedule_type, chunk_size);
     std::string scalFileName = generateFileName("scaling_analysis", sync_type, task_type, energy_method, schedule_type, chunk_size);
 
+    std::ofstream compFile("amdahl_comparison.dat", std::ios::app);
+     compFile << std::left << std::setw(10) << "Threads" 
+                << std::setw(15) << "SerialFrac" 
+                << std::setw(15) << "TheoricalF" 
+                << std::setw(15) << "AbsDiff" << std::endl;
     std::ofstream resFile(resFileName, std::ios::app);
     std::ofstream scalFile(scalFileName, std::ios::app);
 
@@ -105,22 +138,31 @@ simulation_data Benchmark::runScalabilityTest(
 
         // Escritura en scaling_analysis.dat con las 12 columnas exactas
         scalFile << std::left << std::setw(W_S)  << sync_type 
-                 << std::setw(W_S)  << schedule_type  // Agregado
-                 << std::setw(W_S)  << chunk_size     // Agregado
-                 << std::setw(W_H)  << p 
-                 << std::fixed << std::setprecision(10)
-                 << std::setw(W_D)  << res.speedup
-                 << std::setw(W_D)  << res.sigma_speedup
-                 << std::setw(W_D)  << res.serial_fraction
-                 << std::setw(W_D)  << res.sigma_serial_fraction
-                 << std::setw(W_D)  << res.theorical_speedup 
-                 << std::setw(W_D)  << res.sigma_theorical_speedup
-                 << std::setw(W_D)  << res.efficiency
-                 << std::setw(W_D)  << res.sigma_efficiency << std::endl;
+                << std::setw(W_S)  << schedule_type  // Agregado
+                << std::setw(W_S)  << chunk_size     // Agregado
+                << std::setw(W_H)  << p 
+                << std::fixed << std::setprecision(10)
+                << std::setw(W_D)  << res.speedup
+                << std::setw(W_D)  << res.sigma_speedup
+                << std::setw(W_D)  << res.serial_fraction
+                << std::setw(W_D)  << res.sigma_serial_fraction
+                << std::setw(W_D)  << res.theorical_speedup 
+                << std::setw(W_D)  << res.sigma_theorical_speedup
+                << std::setw(W_D)  << res.efficiency
+                << std::setw(W_D)  << res.sigma_efficiency << std::endl;
+
+                compFile << std::left << std::setw(10) << p 
+                << std::setw(15) << res.serial_fraction
+                << std::setw(15) << res.theorical_serial_fraction
+                << std::setw(15) << std::abs(res.serial_fraction - res.theorical_serial_fraction) << std::endl;
         
         resFile.flush();
         scalFile.flush();
+        compFile.flush();
+        
+
     }
+    compFile.close();
     scalFile.close();
     resFile.close();
 

@@ -36,13 +36,15 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     double ts = calculateMean(ts_times);
     double sigma_ts = calculateStdDev(ts_times, ts);
 
-    double f = estimateSerialFractionByTime(ts, tp);
-    double theorical_speedup = calculateTheoricalSpeedup(f, num_threads);
+    double f = estimateSerialFraction(tp, num_threads);
+    double tf= estimateSerialFractionByTime(t1, tp);
+    double theorical_speedup = calculateTheoricalSpeedup(tf, num_threads);
     
     res.mean_time = tp;
     res.std_dev = sigma_tp;
     res.speedup = t1 / tp;
     res.serial_fraction = f;
+    res.theorical_serial_fraction = tf;
     res.theorical_speedup = theorical_speedup;
     // Propagación de error: sigma_Sp = Sp * sqrt((sigma_t1/t1)^2 + (sigma_tp/tp)^2)
     // Esto es vital para las barras de error en tus gráficos
@@ -52,7 +54,7 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     res.sigma_speedup = res.speedup * std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp);
     res.efficiency = res.speedup / num_threads;
     res.sigma_efficiency = res.sigma_speedup / num_threads;
-    res.sigma_serial_fraction = res.serial_fraction*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
+    res.sigma_serial_fraction = res.serial_fraction*(std::sqrt(rel_err_t1 * rel_err_t1 + rel_err_tp * rel_err_tp));
     res.sigma_theorical_speedup =  res.theorical_speedup*(std::sqrt(rel_err_ts * rel_err_ts + rel_err_tp * rel_err_tp));
 
     return res;
@@ -111,4 +113,30 @@ double MetricsCalculator::calculateTheoricalSpeedup(double f, int p) {
         return 1.0;
     }
     return 1.0 / (f + ((1.0 - f) / (double)p));
+}
+DiagnosticResult MetricsCalculator::verifyConsistency(const std::vector<Particle>& bodies) {
+    double total_k = 0.0;
+    int last_idx = -1;
+    int n = static_cast<int>(bodies.size());
+    
+    double m_last = 0, x_last = 0, y_last = 0;
+
+    #pragma omp parallel for reduction(+:total_k) lastprivate(last_idx, m_last, x_last, y_last)
+    for (int i = 0; i < n; ++i) {
+        double m = bodies[i].getMass();
+        total_k += 0.5 * m * (bodies[i].getVx()*bodies[i].getVx() + bodies[i].getVy()*bodies[i].getVy());
+        
+        last_idx = i;
+        m_last = m;
+        x_last = bodies[i].getX();
+        y_last = bodies[i].getY();
+    }
+
+    // Snapshot obtenido mediante lastprivate (Modelo Paralelo)
+    Particle parallel_snapshot(m_last, x_last, y_last);
+    
+
+    DiagnosticResult res = {total_k, last_idx, (last_idx == n - 1), parallel_snapshot};
+    
+    return res;
 }

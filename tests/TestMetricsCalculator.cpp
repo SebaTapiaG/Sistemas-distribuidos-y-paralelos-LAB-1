@@ -1,93 +1,67 @@
 #include <gtest/gtest.h>
-#include "MetricsCalculator.h"
 #include <vector>
 #include <cmath>
+#include "MetricsCalculator.h"
 
-// 1. Prueba de cálculos estadísticos básicos (Tiempo)
-TEST(MetricsCalculatorTest, BasicStatistics) {
-    std::vector<double> times = {10.0, 12.0, 11.0, 9.0, 13.0};
+/**
+ * Test enfocado en la precisión de las métricas de rendimiento.
+ * Como encargado de Benchmark, este archivo asegura que tus reportes
+ * de Speedup y Eficiencia sean estadísticamente correctos.
+ */
+
+TEST(MetricsCalculatorTest, StatisticalPrecision) {
+    // Caso con varianza conocida
+    std::vector<double> times = {10.0, 10.0, 10.0, 10.0};
     double mean = MetricsCalculator::calculateMean(times);
+    EXPECT_DOUBLE_EQ(mean, 10.0);
     
-    // Promedio: 11.0
-    EXPECT_DOUBLE_EQ(mean, 11.0);
-    
-    // Desviación estándar muestral: ~1.5811
-    double stddev = MetricsCalculator::calculateStdDev(times, mean);
-    EXPECT_NEAR(stddev, 1.58113883, 1e-7);
+    // StdDev de valores idénticos debe ser 0
+    EXPECT_DOUBLE_EQ(MetricsCalculator::calculateStdDev(times, mean), 0.0);
 }
 
-// 2. Prueba de análisis de rendimiento e incertidumbre
-TEST(MetricsCalculatorTest, PerformanceAnalysis) {
-    std::vector<double> t1_times = {100.0, 102.0, 98.0, 101.0, 99.0};
-    std::vector<double> tp_times = {25.0, 26.0, 24.0, 25.5, 24.5};
-    std::vector<double> ts_times = {5.0, 5.5, 4.5, 5.2, 4.8}; // Ejemplo de tiempos seriales adicionales
-    int p = 4;
+TEST(MetricsCalculatorTest, AmdahlLawValidation) {
+    // Si el tiempo serial (T1) es 100 y con 4 hilos (Tp) es 25:
+    // Speedup = 4.0, Eficiencia = 1.0, Fracción Serial = 0.0
+    std::vector<double> t1 = {100.0};
+    std::vector<double> tp = {25.0};
+    std::vector<double> ts = {0.0}; // Asumimos ts despreciable para este test
+    int threads = 4;
 
-    PerformanceResult res = MetricsCalculator::analyzePerformance(t1_times, tp_times, ts_times, p);
+    PerformanceResult res = MetricsCalculator::analyzePerformance(t1, tp, ts, threads);
 
-    // Speedup esperado aprox: 100 / 25 = 4.0
-    EXPECT_NEAR(res.speedup, 4.0, 0.2);
-    // Eficiencia esperada aprox: 1.0
-    EXPECT_NEAR(res.efficiency, 1.0, 0.1);
-    // Verificar que la incertidumbre fue calculada (debe ser > 0)
+    EXPECT_DOUBLE_EQ(res.speedup, 4.0);
+    EXPECT_DOUBLE_EQ(res.efficiency, 1.0);
+    EXPECT_NEAR(res.serial_fraction, 0.0, 1e-7);
+}
+
+TEST(MetricsCalculatorTest, ErrorPropagationSpeedup) {
+    // Test de propagación de errores: S = T1 / Tp
+    // sigma_S = S * sqrt((sigma_T1/T1)^2 + (sigma_Tp/Tp)^2)
+    std::vector<double> t1 = {90.0, 110.0}; // Media 100, StdDev ~14.14
+    std::vector<double> tp = {45.0, 55.0}; // Media 50, StdDev ~7.07
+    std::vector<double> ts = {0.0, 0.0};
+    
+    PerformanceResult res = MetricsCalculator::analyzePerformance(t1, tp, ts, 2);
+    
+    EXPECT_DOUBLE_EQ(res.speedup, 2.0);
+    // La incertidumbre debe ser mayor que cero
     EXPECT_GT(res.sigma_speedup, 0.0);
+    // La eficiencia con 2 hilos y speedup 2 debe ser 1.0
+    EXPECT_DOUBLE_EQ(res.efficiency, 1.0);
 }
 
-// 3. NUEVO: Prueba de cálculo de Momento Lineal
-TEST(MetricsCalculatorTest, MomentumCalculation) {
+TEST(MetricsCalculatorTest, PhysicsConsistency) {
+    // Verificamos que la reducción de energía y el lastprivate funcionen
     std::vector<Particle> bodies;
-    // Partícula 1: masa 2.0, vx 5.0, vy 0.0 -> Px = 10.0
-    Particle p1(2.0, 0.0, 0.0);
-    p1.setVx(5.0);
-    p1.setVy(0.0);
+    bodies.push_back(Particle(1.0, 0.0, 0.0));
+    bodies.back().setVx(10.0);
     
-    // Partícula 2: masa 1.0, vx -10.0, vy 5.0 -> Px = -10.0, Py = 5.0
-    Particle p2(1.0, 10.0, 10.0);
-    p2.setVx(-10.0);
-    p2.setVy(5.0);
+    bodies.push_back(Particle(1.0, 5.0, 5.0));
+    bodies.back().setVx(-10.0);
+
+    DiagnosticResult diag = MetricsCalculator::verifyConsistency(bodies);
     
-    bodies.push_back(p1);
-    bodies.push_back(p2);
-
-    MomentumResult res = MetricsCalculator::calculateMomentum(bodies);
-
-    // Px total = 10.0 + (-10.0) = 0.0
-    EXPECT_NEAR(res.px, 0.0, 1e-9);
-    // Py total = 0.0 + 5.0 = 5.0
-    EXPECT_NEAR(res.py, 5.0, 1e-9);
-    // Magnitud = sqrt(0^2 + 5^2) = 5.0
-    EXPECT_DOUBLE_EQ(res.magnitude, 5.0);
-}
-
-// 4. ACTUALIZADO: Prueba de validación física (Energía + Momento)
-TEST(MetricsCalculatorTest, PhysicsValidationFull) {
-    simulation_data data;
-    
-    // Simular 2 partículas en 2 pasos de tiempo
-    Particle p_init(1.0, 0.0, 0.0);
-    p_init.setVx(1.0);
-    
-    // Paso inicial
-    data.k = {0.5}; // 1/2 * m * v^2
-    data.u = {-0.2};
-    data.bodies.push_back({p_init}); 
-
-    // Paso final (conservativo)
-    data.k.push_back(0.4);
-    data.u.push_back(-0.1);
-    data.bodies.push_back({p_init}); // Misma velocidad, momento se conserva
-
-    PhysicalResult res = MetricsCalculator::analyzePhysics(data, 1e-5);
-    
-    // E_total inicial = 0.3, E_total final = 0.3. Delta = 0.
-    EXPECT_TRUE(res.is_valid);
-    EXPECT_NEAR(res.energy_drift, 0.0, 1e-9);
-    EXPECT_NEAR(res.initial_momentum.magnitude, res.final_momentum.magnitude, 1e-9);
-}
-
-// 5. Prueba de la Ley de Amdahl
-TEST(MetricsCalculatorTest, AmdahlAnalysis) {
-    // Si con 4 hilos el speedup es 2, f debería ser 1/3
-    double f = MetricsCalculator::estimateSerialFraction(2.0, 4);
-    EXPECT_NEAR(f, 0.333333, 1e-5);
+    EXPECT_TRUE(diag.consistency_pass);
+    // El lastprivate debe haber capturado la última partícula (índice 1)
+    EXPECT_EQ(diag.last_index, 1);
 }

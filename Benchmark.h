@@ -28,7 +28,8 @@ public:
         int schedule_type, 
         int chunk_size, 
         double G, 
-        double epsilon
+        double epsilon,
+        bool perform_diagnostics = false // Nuevo: Controla si se ejecuta la fase de diagnóstico
     );
 
     void setupRandomSystem(NBodySystem& system, int n);
