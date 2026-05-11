@@ -9,11 +9,12 @@ Benchmark::Benchmark(int reps, int s, double delta_t, unsigned int s_seed)
     : repetitions(reps), steps(s), dt(delta_t), seed(s_seed) {
 }
 
-// Omitimos los nombres de las variables que no se usan para evitar los warnings del compilador
+// Ya no se usa
 std::string Benchmark::generateFileName(std::string prefix, int /*sync_type*/, int /*task_type*/, int /*energy_method*/, int /*schedule_type*/, int /*chunk_size*/) {
     return prefix + ".dat";
 }
-
+// Generación de sistemas aleatorios para pruebas
+// Este método se encarga de poblar el sistema con partículas de masa y posición aleatorias, utilizando la semilla proporcionada para garantizar reproducibilidad.
 void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
     std::mt19937 gen(seed); 
     std::uniform_real_distribution<> pos_dis(0, 1000);
@@ -23,7 +24,9 @@ void Benchmark::setupRandomSystem(NBodySystem& system, int n) {
         system.addParticle(Particle(mass_dis(gen), pos_dis(gen), pos_dis(gen)));
     }
 }
-
+// Método principal para ejecutar la prueba de escalabilidad
+// Este método ejecuta la simulación para un número variable de hilos, midiendo el tiempo de ejecución y calculando métricas de rendimiento como el speedup y la eficiencia. 
+// También se encarga de escribir los resultados en archivos para su posterior análisis.
 simulation_data Benchmark::runScalabilityTest(
     int max_threads, int num_particles, int task_type, 
     int sync_type, int energy_method, int schedule_type, 

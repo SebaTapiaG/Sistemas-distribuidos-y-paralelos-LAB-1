@@ -1,5 +1,5 @@
 #include "MetricsCalculator.h"
-
+// Método para calcular la media de un vector de tiempos
 double MetricsCalculator::calculateMean(const std::vector<double>& times) {
     if (times.empty()){
         return 0.0;
@@ -8,7 +8,7 @@ double MetricsCalculator::calculateMean(const std::vector<double>& times) {
     double mean = sum / times.size();
     return mean;
 }
-
+// Método para calcular la desviación estándar de un vector de tiempos dado su media
 double MetricsCalculator::calculateStdDev(const std::vector<double>& times, double mean) {
     if (times.size() < 2){
         return 0.0;
@@ -20,6 +20,8 @@ double MetricsCalculator::calculateStdDev(const std::vector<double>& times, doub
     double stddev = std::sqrt(sq_sum / (times.size() - 1)); 
     return stddev;
 }
+// Método que encapsula el análisis de rendimiento, permitiendo elegir entre el método tradicional o 
+// el basado en firstprivate para el cálculo de desviaciones estándar.
 PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
                                                       const std::vector<double>& tp_times, 
                                                       const std::vector<double>& ts_times,
@@ -30,7 +32,8 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
         return analyzePerformanceFirstPrivate(t1_times, tp_times, ts_times, num_threads);
     }
 }
-
+//Método específico para el análisis de rendimiento de manera serial, calculando métricas como el speedup, la fracción serial y la eficiencia,
+//  junto con sus respectivas desviaciones estándar para una interpretación estadística robusta.
 PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double>& t1_times, 
                                                       const std::vector<double>& tp_times,
                                                       const std::vector<double>& ts_times,
@@ -56,7 +59,6 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
     res.theorical_serial_fraction = tf;
     res.theorical_speedup = theorical_speedup;
     // Propagación de error: sigma_Sp = Sp * sqrt((sigma_t1/t1)^2 + (sigma_tp/tp)^2)
-    // Esto es vital para las barras de error en tus gráficos
     double rel_err_t1 = (t1 > 0) ? (sigma_t1 / t1) : 0;
     double rel_err_tp = (tp > 0) ? (sigma_tp / tp) : 0;
     double rel_err_ts = (ts > 0) ? (sigma_ts / ts) : 0;
@@ -68,7 +70,8 @@ PerformanceResult MetricsCalculator::analyzePerformance(const std::vector<double
 
     return res;
 }
-//Reemplazo de calculateMetricsFirstPrivate.
+// Método específico para el análisis de rendimiento utilizando firstprivate, que paraleliza el cálculo de las 
+// desviaciones estándar para mejorar la eficiencia en la interpretación estadística de los resultados.
 PerformanceResult MetricsCalculator::analyzePerformanceFirstPrivate(
     const std::vector<double>& t1_times, 
     const std::vector<double>& tp_times,
@@ -120,7 +123,7 @@ PerformanceResult MetricsCalculator::analyzePerformanceFirstPrivate(
     // ... (puedes incluir aquí el resto de tus cálculos de sigma)
     return res;
 }
-
+//no se usan
 MomentumResult MetricsCalculator::calculateMomentum(const std::vector<Particle>& bodies) {
     double total_px = 0.0;
     double total_py = 0.0;
@@ -153,7 +156,7 @@ PhysicalResult MetricsCalculator::analyzePhysics(const simulation_data& data, do
     
     return res;
 }
-
+//Metodo de calculo de la fracción serial a partir del speedup medido, basado en la Ley de Amdahl.
 double MetricsCalculator::estimateSerialFraction(double speedup, int p) {
     if (p <= 1){
         return 1.0;
@@ -162,6 +165,7 @@ double MetricsCalculator::estimateSerialFraction(double speedup, int p) {
     double f = ((1.0 / speedup) - (1.0 / (double)p)) / (1.0 - (1.0 / (double)p));
     return (f < 0) ? 0 : f; // Ajuste por ruido experimental
 }
+// Metodo de estimación de la fracción serial a partir de los tiempos medidos, 
 double MetricsCalculator::estimateSerialFractionByTime(double t1, double tp){
     if (t1 <= 0 || tp <= 0){
         return 1.0;
@@ -169,12 +173,15 @@ double MetricsCalculator::estimateSerialFractionByTime(double t1, double tp){
     double f = t1/(t1+tp);
     return (f < 0) ? 0 : f; // Ajuste por ruido experimental
 }
+// Metodo de calculo del speedup teorico segun la ley de amdahl, utilizando la fraccion serial estimada a partir de los tiempos medidos.
 double MetricsCalculator::calculateTheoricalSpeedup(double f, int p) {
     if (p <= 1){
         return 1.0;
     }
     return 1.0 / (f + ((1.0 - f) / (double)p));
 }
+// Método para verificar la consistencia física del sistema, 
+// calculando la energía cinética total y un snapshot de la última partícula procesada.
 DiagnosticResult MetricsCalculator::verifyConsistency(const std::vector<Particle>& bodies) {
     double total_k = 0.0;
     int last_idx = -1;
