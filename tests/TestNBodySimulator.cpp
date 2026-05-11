@@ -263,14 +263,14 @@ TEST_F(NBodySimulatorTest, ProcessBodiesUseSingleEquivalence) {
     sysImplicit.addParticle(Particle(1.0, 0.0, 0.0));
     sysImplicit.addParticle(Particle(2.0, 1.0, 0.5));
     NBodySimulator simImplicit(&sysImplicit, deltaT);
-    simImplicit.processBodies(iters, 0, true);
+    simImplicit.processBodies(iters, 0, true, 1, 0, 0, 100, 0, 0);
 
     // Ejecución B: con use_single = false (single nowait + barrier explícita)
     NBodySystem sysExplicit(1.0, 0.1);
     sysExplicit.addParticle(Particle(1.0, 0.0, 0.0));
     sysExplicit.addParticle(Particle(2.0, 1.0, 0.5));
     NBodySimulator simExplicit(&sysExplicit, deltaT);
-    simExplicit.processBodies(iters, 0, false);
+    simExplicit.processBodies(iters, 0, false, 1, 0, 0, 100, 0, 0);
 
     // Ambas ejecuciones DEBEN generar exactamente la misma evolución física.
     // Comprobamos la posición final de las partículas en ambos universos.

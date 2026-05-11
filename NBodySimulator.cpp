@@ -73,101 +73,6 @@ void NBodySimulator::integrateEuler(int sync_type, bool use_barrier){
     }
 }
 
-// ── Calcula energía cinética y potencial
-pair<double, double> NBodySimulator::calculateEnergy() {
-    double k = 0;
-    double u = 0;
-    vector<Particle>& bodies = system->getBodies();
-
-    for (size_t i = 0; i < bodies.size(); i++) {
-        k += bodies[i].getMass() * 
-             (pow(bodies[i].getVx(), 2) + 
-             pow(bodies[i].getVy(), 2));
-
-        for (size_t j = 0; j < i; j++) {
-            double dx = bodies[j].getX() - bodies[i].getX();
-            double dy = bodies[j].getY() - bodies[i].getY();
-            double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
-            u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
-        }
-    }
-    u = -1 * system->getG() * u;
-    k = k * 0.5;
-    return {u, k};
-}
-
-// Versión serial
-simulation_data NBodySimulator::processBodies(int iter){
-    simulation_data data;
-    data.u.resize(iter);
-    data.k.resize(iter);
-    data.bodies.resize(iter);
-
-    // NO PARALELIZAR ESTE FOR
-    for(int i = 0; i<iter; i++){
-        system->computeAccelerations();
-        auto [ui, ki] = calculateEnergy();
-        integrateEuler();
-        data.u[i] = ui;
-        data.k[i] = ki;
-        data.bodies[i] = system->getBodies();
-    }
-    return data;
-}
-
-// ── Calcula energía cinética y potencial en paralelo
-pair<double, double> NBodySimulator::calculateEnergy(int method) {
-    double k = 0.0;
-    double u = 0.0;
-    vector<Particle>& bodies = system->getBodies();
-
-    switch(method) {
-        // 0: Usando reduction (La forma más eficiente en OpenMP)
-        case 0:
-            #pragma omp parallel for reduction(+:k, u) schedule(dynamic)
-            for (size_t i = 0; i < bodies.size(); i++) {
-                k += bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
-                
-                for (size_t j = 0; j < i; j++) {
-                    double dx = bodies[j].getX() - bodies[i].getX();
-                    double dy = bodies[j].getY() - bodies[i].getY();
-                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
-                    u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
-                }
-            }
-            break;
-
-        // 1: Usando atomic (Menos eficiente, obliga a los hilos a esperar para sumar)
-        case 1:
-            #pragma omp parallel for schedule(dynamic)
-            for (size_t i = 0; i < bodies.size(); i++) {
-                double local_k = bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
-                double local_u = 0.0;
-                
-                for (size_t j = 0; j < i; j++) {
-                    double dx = bodies[j].getX() - bodies[i].getX();
-                    double dy = bodies[j].getY() - bodies[i].getY();
-                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
-                    local_u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
-                }
-
-                // Protegemos la suma en las variables compartidas
-                #pragma omp atomic
-                k += local_k;
-                #pragma omp atomic
-                u += local_u;
-            }
-            break;
-
-        default:
-            throw std::invalid_argument("method solo puede ser 0 (reduction) o 1 (atomic).");
-    }
-
-    u = -1.0 * system->getG() * u;
-    k = k * 0.5;
-    return {u, k};
-}
-
 // ── Demostración de la cláusula 'private' y Reducción Manual ─────────────────
 pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_private) {
     if (!use_private) {
@@ -233,6 +138,101 @@ pair<double, double> NBodySimulator::calculateEnergy(int method, bool use_privat
     return {u, k};
 }
 
+// ── Calcula energía cinética y potencial
+pair<double, double> NBodySimulator::calculateEnergy() {
+    double k = 0;
+    double u = 0;
+    vector<Particle>& bodies = system->getBodies();
+
+    for (size_t i = 0; i < bodies.size(); i++) {
+        k += bodies[i].getMass() * 
+             (pow(bodies[i].getVx(), 2) + 
+             pow(bodies[i].getVy(), 2));
+
+        for (size_t j = 0; j < i; j++) {
+            double dx = bodies[j].getX() - bodies[i].getX();
+            double dy = bodies[j].getY() - bodies[i].getY();
+            double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+            u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+        }
+    }
+    u = -1 * system->getG() * u;
+    k = k * 0.5;
+    return {u, k};
+}
+
+// ── Calcula energía cinética y potencial en paralelo
+pair<double, double> NBodySimulator::calculateEnergy(int method) {
+    double k = 0.0;
+    double u = 0.0;
+    vector<Particle>& bodies = system->getBodies();
+
+    switch(method) {
+        // 0: Usando reduction (La forma más eficiente en OpenMP)
+        case 0:
+            #pragma omp parallel for reduction(+:k, u) schedule(dynamic)
+            for (size_t i = 0; i < bodies.size(); i++) {
+                k += bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+                
+                for (size_t j = 0; j < i; j++) {
+                    double dx = bodies[j].getX() - bodies[i].getX();
+                    double dy = bodies[j].getY() - bodies[i].getY();
+                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                    u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+                }
+            }
+            break;
+
+        // 1: Usando atomic (Menos eficiente, obliga a los hilos a esperar para sumar)
+        case 1:
+            #pragma omp parallel for schedule(dynamic)
+            for (size_t i = 0; i < bodies.size(); i++) {
+                double local_k = bodies[i].getMass() * (pow(bodies[i].getVx(), 2) + pow(bodies[i].getVy(), 2));
+                double local_u = 0.0;
+                
+                for (size_t j = 0; j < i; j++) {
+                    double dx = bodies[j].getX() - bodies[i].getX();
+                    double dy = bodies[j].getY() - bodies[i].getY();
+                    double distSq = (dx * dx) + (dy * dy) + pow(system->getEpsilon(), 2);
+                    local_u += (bodies[i].getMass() * bodies[j].getMass()) / sqrt(distSq);
+                }
+
+                // Protegemos la suma en las variables compartidas
+                #pragma omp atomic
+                k += local_k;
+                #pragma omp atomic
+                u += local_u;
+            }
+            break;
+
+        default:
+            throw std::invalid_argument("method solo puede ser 0 (reduction) o 1 (atomic).");
+    }
+
+    u = -1.0 * system->getG() * u;
+    k = k * 0.5;
+    return {u, k};
+}
+
+// Versión serial
+simulation_data NBodySimulator::processBodies(int iter){
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    data.bodies.resize(iter);
+
+    // NO PARALELIZAR ESTE FOR
+    for(int i = 0; i<iter; i++){
+        system->computeAccelerations();
+        auto [ui, ki] = calculateEnergy();
+        integrateEuler();
+        data.u[i] = ui;
+        data.k[i] = ki;
+        data.bodies[i] = system->getBodies();
+    }
+    return data;
+}
+
 // ── processBodies usando paralelización exterior (Tasks vs Parallel For)
 simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_type, 
     int method, int schedule_type, int chunk_size) {
@@ -289,7 +289,8 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_
 }
 
 // ── Sobrecarga processBodies para contrastar single vs single nowait ─────────
-simulation_data NBodySimulator::processBodies(int iter, int task_type, bool use_single) {
+simulation_data NBodySimulator::processBodies(int iter, int task_type, bool use_single, int sync_type, 
+    int method, int schedule_type, int chunk_size, int use_private, int use_barrier) {
     simulation_data data;
     data.u.resize(iter);
     data.k.resize(iter);
@@ -341,12 +342,12 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type, bool use_
             }
         } else {
             // Si no es task_type 0, usamos la lógica paralela estándar
-            system->computeAccelerations(0); 
-            integrateEuler(2);
+            system->computeAccelerations(schedule_type, chunk_size); 
+            integrateEuler(sync_type, use_barrier);
         }
 
         // Medición de energía con reducción nativa y almacenamiento de la "foto" del instante
-        auto [ui, ki] = calculateEnergy(0);
+        auto [ui, ki] = calculateEnergy(method, use_private);
         data.u[i] = ui;
         data.k[i] = ki;
         data.bodies[i] = system->getBodies();
