@@ -221,11 +221,10 @@ simulation_data NBodySimulator::processBodies(int iter){
     data.k.resize(iter);
     data.bodies.resize(iter);
 
-    // NO PARALELIZAR ESTE FOR
     for(int i = 0; i<iter; i++){
         system->computeAccelerations();
-        auto [ui, ki] = calculateEnergy();
         integrateEuler();
+        auto [ui, ki] = calculateEnergy();
         data.u[i] = ui;
         data.k[i] = ki;
         data.bodies[i] = system->getBodies();

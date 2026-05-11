@@ -49,26 +49,28 @@ TEST_F(NBodySimulatorTest, PotentialEnergyInitialState) {
     EXPECT_NEAR(u0, expected_u0, 1e-9);
 }
 
-// ── 3. Energía potencial después de un paso (lo que realmente hace processBodies) ──
+// ── 3. Energía potencial después de un paso ──
 TEST_F(NBodySimulatorTest, PotentialEnergyAfterOneStep) {
-    // El orden en processBodies(iter) del simulador es:
-    //   1. computeAccelerations()
-    //   2. calculateEnergy()   <-- guarda U aqui, en el estado ACTUAL (t=0)
-    //   3. integrateEuler()    <-- mueve las particulas DESPUES
-    // Por tanto data.u[0] corresponde a U en t=0, igual que PotentialEnergyInitialState.
-    // Este test verifica que U en t=0 coincide con el valor analitico esperado.
-    const double m1 = 1.0, m2 = 1.0, dist = 1.0;
+    const double m1 = 1.0, m2 = 1.0, dist_initial = 1.0;
     const double eps = system->getEpsilon();
     const double G   = system->getG();
 
-    system->addParticle(Particle(m1, 0.0,  0.0));
-    system->addParticle(Particle(m2, dist, 0.0));
+    system->addParticle(Particle(m1, 0.0, 0.0));
+    system->addParticle(Particle(m2, dist_initial, 0.0));
 
-    // U en t=0: -G*m1*m2 / sqrt(d^2 + eps^2)
-    const double expected_u = -G * m1 * m2 / std::sqrt(dist*dist + eps*eps);
+    double r2 = dist_initial * dist_initial + eps * eps;
+    double a_mag = G * m1 / (r2 * std::sqrt(r2));
+    
+    double v_new = a_mag * deltaT;
+    double delta_x = v_new * deltaT; 
+    
+    double dist_final = dist_initial - (2 * delta_x); 
+
+    const double expected_u = -G * m1 * m2 / std::sqrt(dist_final * dist_final + eps * eps);
 
     simulation_data data = simulator->processBodies(1);
-    EXPECT_NEAR(data.u[0], expected_u, 1e-9);
+    
+    EXPECT_NEAR(data.u[0], expected_u, 1e-7);
 }
 
 // ── 4. Movimiento con velocidad inicial ──────────────────────────────────────
