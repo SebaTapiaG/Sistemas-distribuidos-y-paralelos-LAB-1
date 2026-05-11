@@ -15,9 +15,6 @@
  * suavizado, usando la ecuación:
  *
  *   a_i = G * sum_{j != i} [ mj * (rj - ri) / (|rj - ri|^2 + eps^2)^(3/2) ]
- *
- * En semanas posteriores se añadirán variantes paralelas con OpenMP
- * (schedules, collapse, etc.) mediante sobrecarga de computeAccelerations.
  */
 class NBodySystem {
     private:
@@ -42,7 +39,7 @@ class NBodySystem {
         /** Pone ax = ay = 0 en todas las partículas. Llamar antes de computeAccelerations. */
         void zeroAccelerations();
 
-        // ── Cálculo de aceleraciones (versión serial — semana 1) ─────────────────
+        // ── Cálculo de aceleraciones (versión serial) ─────────────────
 
         /**
          * Calcula las aceleraciones de todos los cuerpos por interacción par a par.
@@ -57,20 +54,20 @@ class NBodySystem {
         void computeAccelerations();
 
         /**
-         * Variante con tipo de schedule (preparada para OpenMP — semana 2).
+         * Variante con tipo de schedule (preparada para OpenMP).
          * @param schedule_type  0 = static, 1 = dynamic, 2 = guided
          */
         void computeAccelerations(int schedule_type);
 
         /**
-         * Variante con schedule y chunk size (semana 2).
+         * Variante con schedule y chunk size.
          * @param schedule_type  0 = static, 1 = dynamic, 2 = guided
          * @param chunk_size     Tamaño del chunk de iteraciones por hilo
          */
         void computeAccelerations(int schedule_type, int chunk_size);
 
         /**
-         * Variante con collapse(2) sobre bucles anidados i, j (semana 2).
+         * Variante con collapse(2) sobre bucles anidados i, j.
          * Requiere demostrar equivalencia con la ecuación de a_i en el reporte.
          */
         void computeAccelerationsCollapse();

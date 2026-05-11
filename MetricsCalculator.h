@@ -27,7 +27,7 @@ struct DiagnosticResult {
     double energy;
     int last_index;
     bool consistency_pass;
-    Particle last_particle_state; // <--- Faltaba esta línea para el Snapshot
+    Particle last_particle_state; 
 };
 
 struct MomentumResult {

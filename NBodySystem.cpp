@@ -42,7 +42,7 @@ void NBodySystem::computeAccelerations() {
      *   - Solo se escribe en bodies[i].ax/ay; bodies[j] solo se lee.
      *
      * Esto evita condiciones de carrera cuando el bucle externo
-     * se paralelice con OpenMP en semanas posteriores.
+     * se paralelice con OpenMP.
      *
      * Fórmula aplicada para cada par (i, j):
      *
