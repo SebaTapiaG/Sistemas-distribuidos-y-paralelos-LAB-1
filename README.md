@@ -8,7 +8,7 @@ Si deseas ejecutar el código localmente sin Docker, asegúrate de tener instala
 * `ffmpeg` para el renderizado del video de la simulación.
 
 ## Ejecución Automatizada con Docker
-Para garantizar la reproducibilidad y evitar problemas de dependencias, puedes ejecutar el pipeline completo de pruebas, benchmark y generación de gráficos en un solo comando utilizando Docker con los siguientes comandos:
+Para garantizar la reproducibilidad y evitar problemas de dependencias, puedes ejecutar el pipeline completo de pruebas, benchmark y generación de gráficos utilizando Docker con los siguientes comandos:
 ```bash
 docker build -t lab1-nbody .
 ```
@@ -39,7 +39,8 @@ docker run --rm -v "%cd%":/workspace lab1-nbody bash -c "make clean && make && m
 ### Limpiar
 `make clean`
 
-Instrucciones Detalladas de Ejecución
+# Instrucciones Detalladas de Ejecución
+
 El simulador cuenta con dos modos principales de ejecución manual si necesitas pasarle parámetros específicos:
 
 ### 1. Modo Simulación Estándar (Física y Animación)
@@ -67,7 +68,7 @@ Las variables de este comando y combinaciones son:
 - sched: 0 (Static), 1 (Dynamic), 2 (Guided)
 - chunk: Tamaño del bloque (Ej. 10, 50, 100). Usar 0 para automático.
 
-Una vez ejecutados los benchmarks, para se puede gráficar los resultados con:
+Una vez ejecutados los benchmarks, se pueden gráficar los resultados con:
 ```bash
 python3 scripts/plot_scalability.py
 python3 scripts/plot_efficiency.py
