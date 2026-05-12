@@ -3,18 +3,26 @@
 
 using namespace std;
 
+/**
+ * Particle
+ * 
+ * Entidad física puntual en espcaio 2D.
+ * Proporciona métodos para el moviemiento de estas.
+*/
 class Particle {
     private:
-        double mass;
-        double x, y, vx, vy, ax, ay;
+        double mass; //Masa
+        double x, y; //Posiciones
+        double vx, vy; //Velocidades
+        double ax, ay; //Aceleraciones
 
     public:
         Particle(double m, double x, double y);
         Particle(double m, double x, double y, double vx, double vy);
         void setAcceleration(double ax_, double ay_);
         void addAcceleration(double dax, double day);
-        void kick(double dt); // v += a*dt
-        void drift(double dt); // r += v*dt
+        void kick(double dt); // Actualiza velocidades
+        void drift(double dt); // Actualiza posiciones
         double getMass() const;
 
     // Getters

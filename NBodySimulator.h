@@ -5,16 +5,24 @@
 
 using namespace std;
 
+// Información de los cuerpos y energías para cada paso de la simulación.
 struct simulation_data {
     vector<double> k;
     vector<double> u;
     vector<vector<Particle>> bodies;
 };
 
+/**
+ * NBodySimulator
+ * 
+ * Motor encargado de coordinar la evolución temporal del sistema.
+ * Utiliza sobrecarga de métodos 
+ * para comparar distintas estrategias de paralelización.
+ */
 class NBodySimulator {
     private:
-        NBodySystem* system;
-        double time_step;
+        NBodySystem* system; //Sistema de N cuerpos
+        double time_step; //Paso del tiempo
     public:
         NBodySimulator(NBodySystem* sys, double dt);
 
