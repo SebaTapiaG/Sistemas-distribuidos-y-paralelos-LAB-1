@@ -251,7 +251,7 @@ simulation_data NBodySimulator::processBodies(int iter, int task_type, int sync_
             {
                 #pragma omp single
                 {
-                    system->computeAccelerations(schedule_type, chunk_size);
+                    system->computeAccelerations();
                 }
                 // Barrera implicita del single: todos los hilos tienen las
                 // aceleraciones actualizadas antes de continuar.
