@@ -1,0 +1,8 @@
+=== VALIDACIÓN DE INTEGRIDAD (SERIAL VS PARALELO) ===
+Hilos: 20 | N: 10
+Índice Final: 9 (Esperado: 9)
+Masa Checksum  -> Serial: 76.8336 | Paralelo (lastprivate): 76.8336
+Posición X     -> Serial: 987.9953 | Paralelo (lastprivate): 987.9953
+Resultado: INTEGRO
+----------------------------------------------------
+
