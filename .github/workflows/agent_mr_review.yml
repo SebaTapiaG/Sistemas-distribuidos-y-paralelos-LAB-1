@@ -1,0 +1,112 @@
+name: Agente revisor de pull requests
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  revisor-mr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Obtener diff del PR
+        run: |
+          git diff origin/main...HEAD > pr_diff.txt
+
+      - name: Revisar PR con Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          DIFF=$(head -200 pr_diff.txt)
+          
+          PROMPT="Eres un agente revisor de PRs para un proyecto C++/CUDA N-body.
+          Título: $PR_TITLE
+          Descripción: $PR_BODY
+          Diff:
+          $DIFF
+
+          Clasifica este PR. Es MECANICO si solo altera documentación, formato o añade tests.
+          Es REQUIERE_REVISION_HUMANA si altera la lógica de los kernels CUDA, la física, o firmas públicas.
+
+          Responde en JSON exacto:
+          {
+            \"veredicto\": \"MECANICO\" o \"REQUIERE_REVISION_HUMANA\",
+            \"razon\": \"explicación concisa\",
+            \"observaciones\": [\"obs1\", \"obs2\"],
+            \"tiene_issue_asociado\": true o false
+          }"
+
+          curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"contents\": [{\"parts\":[{\"text\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}],
+              \"generationConfig\": { \"responseMimeType\": \"application/json\" }
+            }" > api_response.json
+
+          python3 << 'EOF' > revision.json
+          import json, sys
+          try:
+              with open('api_response.json', 'r') as f:
+                  data = json.load(f)
+              
+              if 'error' in data:
+                  fallback = {
+                      "veredicto": "REQUIERE_REVISION_HUMANA",
+                      "razon": f"Error de la API Gemini: {data['error'].get('message', 'Desconocido')}",
+                      "observaciones": [],
+                      "tiene_issue_asociado": False
+                  }
+                  print(json.dumps(fallback))
+                  sys.exit(0)
+                  
+              raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+              
+              if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
+              elif raw_text.startswith('```json'): raw_text = raw_text[7:]
+              if raw_text.endswith('```'): raw_text = raw_text[:-3]
+              
+              json.loads(raw_text.strip())
+              print(raw_text.strip())
+              
+          except Exception as e:
+              fallback = {
+                  "veredicto": "REQUIERE_REVISION_HUMANA",
+                  "razon": "Fallo al procesar respuesta del LLM",
+                  "observaciones": [f"Error técnico: {str(e)}"],
+                  "tiene_issue_asociado": False
+              }
+              print(json.dumps(fallback))
+          EOF
+
+      - name: Comentar en el PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 << 'EOF'
+          import json, subprocess, os
+          with open('revision.json') as f:
+              rev = json.load(f)
+              
+          veredicto = rev.get('veredicto', 'REQUIERE_REVISION_HUMANA')
+          razon = rev.get('razon', '')
+          obs = rev.get('observaciones', [])
+          tiene_issue = rev.get('tiene_issue_asociado', False)
+          pr_number = os.environ['PR_NUMBER']
+          
+          emoji = '' if veredicto == 'MECANICO' else ''
+          issue_txt = 'Vinculado a Issue' if tiene_issue else 'Falta asociar Issue'
+          obs_txt = '\n'.join(f'- {o}' for o in obs)
+          
+          comentario = f"## {emoji} Revisión del Agente Gemini\n\n**Veredicto:** `{veredicto}`\n**Razón:** {razon}\n\n**Estado:** {issue_txt}\n\n**Observaciones:**\n{obs_txt}\n\n> ⚠️ Recuerde que el agente nunca realiza merges automáticos."
+          
+          subprocess.run(['gh', 'pr', 'comment', pr_number, '--body', comentario])
+          EOF
