@@ -49,26 +49,39 @@ jobs:
             \"resumen\": \"frase corta con el estado general\"
           }"
 
-          # Llamada a la API de Gemini configurando JSON estructurado de salida
-          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+          # 1. Llamar a la API y guardar en archivo
+          curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
               \"contents\": [{\"parts\":[{\"text\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}],
-              \"generationConfig\": {
-                \"responseMimeType\": \"application/json\"
-              }
-            }")
+              \"generationConfig\": { \"responseMimeType\": \"application/json\" }
+            }" > api_response.json
 
-          # Extraer el texto plano del JSON que retorna Gemini
-          echo "$RESPONSE" | python3 -c "
+          # 2. Procesar con Python seguro
+          python3 << 'EOF' > analisis.json
           import json, sys
-          data = json.loads(sys.stdin.read())
-          raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
-          # Limpieza por si el modelo incluye bloques de código markdown
-          if raw_text.startswith('```json'): raw_text = raw_text[7:]
-          if raw_text.endswith('```'): raw_text = raw_text[:-3]
-          print(raw_text.strip())
-          " > analisis.json || echo '{"problemas":[],"resumen":"Error al parsear respuesta"}' > analisis.json
+          try:
+              with open('api_response.json', 'r') as f:
+                  data = json.load(f)
+              
+              if 'error' in data:
+                  fallback = {"problemas": [], "resumen": f"Error API Gemini: {data['error'].get('message', 'Desconocido')}"}
+                  print(json.dumps(fallback))
+                  sys.exit(0)
+                  
+              raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+              
+              if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
+              elif raw_text.startswith('```json'): raw_text = raw_text[7:]
+              if raw_text.endswith('```'): raw_text = raw_text[:-3]
+              
+              json.loads(raw_text.strip())
+              print(raw_text.strip())
+              
+          except Exception as e:
+              fallback = {"problemas": [], "resumen": f"Fallo al procesar respuesta: {str(e)}"}
+              print(json.dumps(fallback))
+          EOF
 
       - name: Crear issues si hay problemas
         env:
