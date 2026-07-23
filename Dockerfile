@@ -24,3 +24,5 @@ RUN cd /usr/src/googletest \
 
 WORKDIR /workspace
 CMD ["bash"]
+
+# Comentario para forzar el build del contenedor en la nueva cuenta
