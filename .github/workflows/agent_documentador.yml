@@ -49,7 +49,6 @@ jobs:
             \"resumen\": \"frase corta con el estado general\"
           }"
 
-          # 1. Llamar a la API y guardar en archivo
           curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -57,7 +56,6 @@ jobs:
               \"generationConfig\": { \"responseMimeType\": \"application/json\" }
             }" > api_response.json
 
-          # 2. Procesar con Python seguro
           python3 << 'EOF' > analisis.json
           import json, sys
           try:

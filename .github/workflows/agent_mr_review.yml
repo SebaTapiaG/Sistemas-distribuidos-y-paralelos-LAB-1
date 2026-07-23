@@ -44,22 +44,19 @@ jobs:
             \"tiene_issue_asociado\": true o false
           }"
 
-          # 1. Llamar a la API y guardar la respuesta en un archivo en lugar de una variable
-          curl -s -X POST "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$){GEMINI_API_KEY}" \
+          curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
               \"contents\": [{\"parts\":[{\"text\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}],
               \"generationConfig\": { \"responseMimeType\": \"application/json\" }
             }" > api_response.json
 
-          # 2. Usar un bloque EOF para procesar el JSON en Python sin pelear con Bash
           python3 << 'EOF' > revision.json
           import json, sys
           try:
               with open('api_response.json', 'r') as f:
                   data = json.load(f)
               
-              # Atrapar errores de la API (ej. clave inválida, sobrecarga)
               if 'error' in data:
                   fallback = {
                       "veredicto": "REQUIERE_REVISION_HUMANA",
@@ -72,17 +69,14 @@ jobs:
                   
               raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
               
-              # Limpiar formato markdown si Gemini insiste en agregarlo
               if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
               elif raw_text.startswith('```json'): raw_text = raw_text[7:]
               if raw_text.endswith('```'): raw_text = raw_text[:-3]
               
-              # Verificar que podemos parsearlo
               json.loads(raw_text.strip())
               print(raw_text.strip())
               
           except Exception as e:
-              # Salvavidas si algo más falla
               fallback = {
                   "veredicto": "REQUIERE_REVISION_HUMANA",
                   "razon": "Fallo al procesar respuesta del LLM",
@@ -109,10 +103,10 @@ jobs:
           pr_number = os.environ['PR_NUMBER']
           
           emoji = '' if veredicto == 'MECANICO' else ''
-          issue_txt = ' Vinculado a Issue' if tiene_issue else ' Falta asociar Issue'
+          issue_txt = 'Vinculado a Issue' if tiene_issue else 'Falta asociar Issue'
           obs_txt = '\n'.join(f'- {o}' for o in obs)
           
-          comentario = f"## {emoji} Revisión del Agente Gemini\n\n**Veredicto:** `{veredicto}`\n**Razón:** {razon}\n\n**Estado:** {issue_txt}\n\n**Observaciones:**\n{obs_txt}\n\n>  Recuerde que el agente nunca realiza merges automáticos."
+          comentario = f"## {emoji} Revisión del Agente Gemini\n\n**Veredicto:** `{veredicto}`\n**Razón:** {razon}\n\n**Estado:** {issue_txt}\n\n**Observaciones:**\n{obs_txt}\n\n> ⚠️ Recuerde que el agente nunca realiza merges automáticos."
           
           subprocess.run(['gh', 'pr', 'comment', pr_number, '--body', comentario])
           EOF

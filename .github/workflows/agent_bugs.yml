@@ -21,7 +21,7 @@ jobs:
           CODIGO=""
           for f in kernels/*.cu kernels/*.cuh CudaBuffer.h NBodySystem.cpp NBodySimulator.cpp; do
             if [ -f "$f" ]; then
-              CODIGO="$CODIGO\n\n===$f ===\n$(head -80$f)"
+              CODIGO="$CODIGO\n\n=== $f ===\n$(head -80 $f)"
             fi
           done
           
@@ -49,7 +49,6 @@ jobs:
             ]
           }"
 
-          # 1. Llamar a la API y guardar en archivo
           curl -s -X POST "[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$){GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -57,7 +56,6 @@ jobs:
               \"generationConfig\": { \"responseMimeType\": \"application/json\" }
             }" > api_response.json
 
-          # 2. Procesar con Python seguro
           python3 << 'EOF' > bugs.json
           import json, sys
           try:
@@ -81,4 +79,25 @@ jobs:
           except Exception as e:
               fallback = {"bugs": [{"tipo": "requiere_humano", "archivo": "GitHub Actions", "descripcion": f"Fallo al procesar respuesta: {str(e)}", "fix_sugerido": ""}]}
               print(json.dumps(fallback))
+          EOF
+
+      - name: Crear issues para bugs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 << 'EOF'
+          import json, subprocess
+          with open('bugs.json') as f:
+              resultado = json.load(f)
+          for bug in resultado.get('bugs', []):
+              tipo = bug.get('tipo', '')
+              archivo = bug.get('archivo', 'desconocido')
+              desc = bug.get('descripcion', '')
+              fix = bug.get('fix_sugerido', '')
+              
+              labels = 'bug,agent,cuda' + (',agent:auto-fix' if tipo == 'mecanico' else '')
+              prefijo = "[Agente] Bug mecánico" if tipo == 'mecanico' else "[Agente] Bug — requiere revisión humana"
+              
+              body = f"## Bug detectado por agente revisor\n\n**Archivo:** `{archivo}`\n\n## Descripción\n{desc}\n\n## Fix sugerido\n```cpp\n{fix}\n```"
+              subprocess.run(['gh', 'issue', 'create', '--title', f"{prefijo}: {desc[:55]}", '--body', body, '--label', labels])
           EOF
