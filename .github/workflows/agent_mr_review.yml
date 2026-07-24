@@ -19,9 +19,9 @@ jobs:
         run: |
           git diff origin/main...HEAD > pr_diff.txt
 
-      - name: Revisar PR con Gemini
+      - name: Revisar PR con GitHub Models
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -44,13 +44,27 @@ jobs:
             \"tiene_issue_asociado\": true o false
           }"
 
-          curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${GEMINI_API_KEY}" \
+          # 1. Llamada a la API de GitHub Models usando gpt-4o-mini
+          curl -s -X POST "https://models.inference.ai.azure.com/chat/completions" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GH_MODELS_TOKEN" \
             -d "{
-              \"contents\": [{\"parts\":[{\"text\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}],
-              \"generationConfig\": { \"responseMimeType\": \"application/json\" }
+              \"model\": \"gpt-4o-mini\",
+              \"messages\": [
+                {
+                  \"role\": \"system\",
+                  \"content\": \"You are a helpful assistant designed to output JSON.\"
+                },
+                {
+                  \"role\": \"user\",
+                  \"content\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+                }
+              ],
+              \"response_format\": { \"type\": \"json_object\" },
+              \"temperature\": 0.1
             }" > api_response.json
 
+          # 2. Parsear el JSON de respuesta estilo OpenAI
           python3 << 'EOF' > revision.json
           import json, sys
           try:
@@ -60,14 +74,14 @@ jobs:
               if 'error' in data:
                   fallback = {
                       "veredicto": "REQUIERE_REVISION_HUMANA",
-                      "razon": f"Error de la API Gemini: {data['error'].get('message', 'Desconocido')}",
+                      "razon": f"Error de GitHub Models API: {data['error'].get('message', 'Desconocido')}",
                       "observaciones": [],
                       "tiene_issue_asociado": False
                   }
                   print(json.dumps(fallback))
                   sys.exit(0)
                   
-              raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+              raw_text = data['choices'][0]['message']['content'].strip()
               
               if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
               elif raw_text.startswith('```json'): raw_text = raw_text[7:]
@@ -103,10 +117,10 @@ jobs:
           pr_number = os.environ['PR_NUMBER']
           
           emoji = '' if veredicto == 'MECANICO' else ''
-          issue_txt = 'Vinculado a Issue' if tiene_issue else 'Falta asociar Issue'
+          issue_txt = ' Vinculado a Issue' if tiene_issue else ' Falta asociar Issue'
           obs_txt = '\n'.join(f'- {o}' for o in obs)
           
-          comentario = f"## {emoji} Revisión del Agente Gemini\n\n**Veredicto:** `{veredicto}`\n**Razón:** {razon}\n\n**Estado:** {issue_txt}\n\n**Observaciones:**\n{obs_txt}\n\n> ⚠️ Recuerde que el agente nunca realiza merges automáticos."
+          comentario = f"## {emoji} Revisión del Agente gpt-4o-mini (GitHub Models)\n\n**Veredicto:** `{veredicto}`\n**Razón:** {razon}\n\n**Estado:** {issue_txt}\n\n**Observaciones:**\n{obs_txt}\n\n> ⚠️ Recuerde que el agente nunca realiza merges automáticos."
           
           subprocess.run(['gh', 'pr', 'comment', pr_number, '--body', comentario])
           EOF
