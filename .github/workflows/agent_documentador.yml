@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 9 * * 1'  # Lunes 9:00 AM
+    - cron: '0 9 * * 1'
 
 jobs:
   documentador:
@@ -15,15 +15,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Revisar documentación con Gemini
+      - name: Revisar documentación con GitHub Models
         id: revisar
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: |
-          README=$(cat README.md 2>/dev/null || echo "No existe")
-          CHANGELOG=$(cat CHANGELOG.md 2>/dev/null || echo "No existe")
+          # 1. Guardamos el contenido en variables de entorno seguras
+          export README_CONTENT=$(cat README.md 2>/dev/null || echo "No existe")
+          export CHANGELOG_CONTENT=$(cat CHANGELOG.md 2>/dev/null || echo "No existe")
           
-          PROMPT="Eres un agente revisor de documentación para un proyecto de simulación N-cuerpos en C++/CUDA (Lab 2, USACH).
+          # 2. Generamos el payload JSON nativamente con Python
+          python3 << 'EOF' > payload.json
+          import json, os
+          
+          readme = os.environ.get('README_CONTENT', '')
+          changelog = os.environ.get('CHANGELOG_CONTENT', '')
+          
+          prompt = f"""Eres un agente revisor de documentación para un proyecto de simulación N-cuerpos en C++/CUDA (Lab 2, USACH).
           Revisa los siguientes documentos y detecta problemas concretos:
           - Secciones faltantes obligatorias según el enunciado
           - Referencias a GPU/CUDA faltantes en README
@@ -31,31 +39,44 @@ jobs:
           - Links rotos o secciones vacías
 
           README.md:
-          $README
+          {readme}
 
           CHANGELOG.md:
-          $CHANGELOG
+          {changelog}
 
           Responde en formato JSON exacto con la estructura:
-          {
-            \"problemas\": [
-              {
-                \"tipo\": \"mecanico\" o \"requiere_humano\",
-                \"archivo\": \"nombre del archivo\",
-                \"descripcion\": \"descripción corta del problema\",
-                \"sugerencia\": \"qué hacer exactamente\"
-              }
+          {{
+            "problemas": [
+              {{
+                "tipo": "mecanico" o "requiere_humano",
+                "archivo": "nombre del archivo",
+                "descripcion": "descripción corta del problema",
+                "sugerencia": "qué hacer exactamente"
+              }}
             ],
-            \"resumen\": \"frase corta con el estado general\"
-          }"
+            "resumen": "frase corta con el estado general"
+          }}"""
 
-          curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${GEMINI_API_KEY}" \
+          payload = {
+              "model": "gpt-4o-mini",
+              "messages": [
+                  {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
+                  {"role": "user", "content": prompt}
+              ],
+              "response_format": { "type": "json_object" },
+              "temperature": 0.1
+          }
+          
+          print(json.dumps(payload))
+          EOF
+
+          # 3. Llamada a GitHub Models leyendo el archivo (adiós problemas de Bash)
+          curl -s -X POST "https://models.inference.ai.azure.com/chat/completions" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"contents\": [{\"parts\":[{\"text\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}]}],
-              \"generationConfig\": { \"responseMimeType\": \"application/json\" }
-            }" > api_response.json
+            -H "Authorization: Bearer $GH_MODELS_TOKEN" \
+            -d @payload.json > api_response.json
 
+          # 4. Procesamiento de la respuesta y Salvavidas
           python3 << 'EOF' > analisis.json
           import json, sys
           try:
@@ -63,11 +84,14 @@ jobs:
                   data = json.load(f)
               
               if 'error' in data:
-                  fallback = {"problemas": [], "resumen": f"Error API Gemini: {data['error'].get('message', 'Desconocido')}"}
+                  fallback = {
+                      "problemas": [],
+                      "resumen": f"Error de GitHub Models API: {data['error'].get('message', 'Desconocido')}"
+                  }
                   print(json.dumps(fallback))
                   sys.exit(0)
                   
-              raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+              raw_text = data['choices'][0]['message']['content'].strip()
               
               if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
               elif raw_text.startswith('```json'): raw_text = raw_text[7:]
@@ -77,10 +101,14 @@ jobs:
               print(raw_text.strip())
               
           except Exception as e:
-              fallback = {"problemas": [], "resumen": f"Fallo al procesar respuesta: {str(e)}"}
+              fallback = {
+                  "problemas": [],
+                  "resumen": f"Fallo al procesar respuesta del LLM: {str(e)}"
+              }
               print(json.dumps(fallback))
           EOF
 
+          
       - name: Crear issues si hay problemas
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,10 +129,10 @@ jobs:
               
               if tipo == 'mecanico':
                   labels = 'documentation,agent,agent:auto-fix'
-                  body = f"## Problema detectado por agente documentador\n\n**Archivo:** `{archivo}`\n**Tipo:** Mecánico\n\n## Descripción\n{desc}\n\n## Sugerencia\n{sug}"
+                  body = f"## Problema detectado por agente documentador (gpt-4o-mini)\n\n**Archivo:** `{archivo}`\n**Tipo:** Mecánico\n\n## Descripción\n{desc}\n\n## Sugerencia\n{sug}"
               else:
                   labels = 'documentation,agent'
-                  body = f"## Revisión requerida — agente documentador\n\n**Archivo:** `{archivo}`\n**Tipo:** Requiere intervención humana\n\n## Descripción\n{desc}\n\n**Detalles:** {sug}"
+                  body = f"## Revisión requerida — agente documentador (gpt-4o-mini)\n\n**Archivo:** `{archivo}`\n**Tipo:** Requiere intervención humana\n\n## Descripción\n{desc}\n\n**Detalles:** {sug}"
                   
               titulo = f"[Agente] Documentación: {desc[:60]}"
               subprocess.run(['gh', 'issue', 'create', '--title', titulo, '--body', body, '--label', labels])
