@@ -20,10 +20,18 @@ jobs:
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: |
-          README=$(cat README.md 2>/dev/null || echo "No existe")
-          CHANGELOG=$(cat CHANGELOG.md 2>/dev/null || echo "No existe")
+          # 1. Guardamos el contenido en variables de entorno seguras
+          export README_CONTENT=$(cat README.md 2>/dev/null || echo "No existe")
+          export CHANGELOG_CONTENT=$(cat CHANGELOG.md 2>/dev/null || echo "No existe")
           
-          PROMPT="Eres un agente revisor de documentación para un proyecto de simulación N-cuerpos en C++/CUDA (Lab 2, USACH).
+          # 2. Generamos el payload JSON nativamente con Python
+          python3 << 'EOF' > payload.json
+          import json, os
+          
+          readme = os.environ.get('README_CONTENT', '')
+          changelog = os.environ.get('CHANGELOG_CONTENT', '')
+          
+          prompt = f"""Eres un agente revisor de documentación para un proyecto de simulación N-cuerpos en C++/CUDA (Lab 2, USACH).
           Revisa los siguientes documentos y detecta problemas concretos:
           - Secciones faltantes obligatorias según el enunciado
           - Referencias a GPU/CUDA faltantes en README
@@ -31,45 +39,44 @@ jobs:
           - Links rotos o secciones vacías
 
           README.md:
-          $README
+          {readme}
 
           CHANGELOG.md:
-          $CHANGELOG
+          {changelog}
 
           Responde en formato JSON exacto con la estructura:
-          {
-            \"problemas\": [
-              {
-                \"tipo\": \"mecanico\" o \"requiere_humano\",
-                \"archivo\": \"nombre del archivo\",
-                \"descripcion\": \"descripción corta del problema\",
-                \"sugerencia\": \"qué hacer exactamente\"
-              }
+          {{
+            "problemas": [
+              {{
+                "tipo": "mecanico" o "requiere_humano",
+                "archivo": "nombre del archivo",
+                "descripcion": "descripción corta del problema",
+                "sugerencia": "qué hacer exactamente"
+              }}
             ],
-            \"resumen\": \"frase corta con el estado general\"
-          }"
+            "resumen": "frase corta con el estado general"
+          }}"""
 
-          # Llamada a GitHub Models
+          payload = {
+              "model": "gpt-4o-mini",
+              "messages": [
+                  {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
+                  {"role": "user", "content": prompt}
+              ],
+              "response_format": { "type": "json_object" },
+              "temperature": 0.1
+          }
+          
+          print(json.dumps(payload))
+          EOF
+
+          # 3. Llamada a GitHub Models leyendo el archivo (adiós problemas de Bash)
           curl -s -X POST "https://models.inference.ai.azure.com/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GH_MODELS_TOKEN" \
-            -d "{
-              \"model\": \"gpt-4o-mini\",
-              \"messages\": [
-                {
-                  \"role\": \"system\",
-                  \"content\": \"You are a helpful assistant designed to output JSON.\"
-                },
-                {
-                  \"role\": \"user\",
-                  \"content\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-                }
-              ],
-              \"response_format\": { \"type\": \"json_object\" },
-              \"temperature\": 0.1
-            }" > api_response.json
+            -d @payload.json > api_response.json
 
-          # Procesamiento y Salvavidas
+          # 4. Procesamiento de la respuesta y Salvavidas
           python3 << 'EOF' > analisis.json
           import json, sys
           try:
@@ -101,6 +108,7 @@ jobs:
               print(json.dumps(fallback))
           EOF
 
+          
       - name: Crear issues si hay problemas
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
