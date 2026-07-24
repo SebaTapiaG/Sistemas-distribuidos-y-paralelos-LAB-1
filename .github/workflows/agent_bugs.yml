@@ -21,7 +21,7 @@ jobs:
           CODIGO=""
           for f in kernels/*.cu kernels/*.cuh CudaBuffer.h NBodySystem.cpp NBodySimulator.cpp; do
             if [ -f "$f" ]; then
-              CODIGO="$CODIGO\n\n===$f ===\n$(head -80$f)"
+              CODIGO="$CODIGO\n\n=== $f ===\n$(head -n 80 "$f")"
             fi
           done
           
