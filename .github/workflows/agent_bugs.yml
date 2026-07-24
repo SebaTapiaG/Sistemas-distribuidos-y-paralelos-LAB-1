@@ -18,58 +18,68 @@ jobs:
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: |
+          # 1. Recopilamos el código de los archivos
           CODIGO=""
           for f in kernels/*.cu kernels/*.cuh CudaBuffer.h NBodySystem.cpp NBodySimulator.cpp; do
             if [ -f "$f" ]; then
-              CODIGO="$CODIGO\n\n=== $f ===\n$(head -n 80 "$f")"
+              CODIGO="$CODIGO\n\n===$f ===\n$(head -n 80 "$f")"
             fi
           done
           
           if [ -z "$CODIGO" ]; then
             CODIGO="No se encontraron archivos CUDA aún."
           fi
+          
+          # Guardamos en variable de entorno segura para Python
+          export CODIGO_CONTENT="$CODIGO"
 
-          PROMPT="Eres un agente experto revisor de bugs para un proyecto C++/CUDA. Revisa este código buscando fallos como:
+          # 2. Generamos el payload JSON nativamente con Python
+          python3 << 'EOF' > payload.json
+          import json, os
+          
+          codigo = os.environ.get('CODIGO_CONTENT', '')
+          
+          prompt = f"""Eres un agente experto revisor de bugs para un proyecto C++/CUDA. Revisa este código buscando fallos como:
           1. Llamadas a API CUDA sin CUDA_CHECK
           2. Kernels sin guardia de borde (if (i >= N) return)
           3. Falta de cudaDeviceSynchronize() antes de host-read
           
           Código:
-          $CODIGO
+          {codigo}
 
           Responde en JSON exacto:
-          {
-            \"bugs\": [
-              {
-                \"tipo\": \"mecanico\" o \"requiere_humano\",
-                \"archivo\": \"nombre\",
-                \"descripcion\": \"descripción\",
-                \"fix_sugerido\": \"código de arreglo\"
-              }
+          {{
+            "bugs": [
+              {{
+                "tipo": "mecanico" o "requiere_humano",
+                "archivo": "nombre",
+                "descripcion": "descripción",
+                "fix_sugerido": "código de arreglo"
+              }}
             ]
-          }"
+          }}"""
 
-          # Llamada a GitHub Models
-          curl -s -X POST "[https://models.inference.ai.azure.com/chat/completions](https://models.inference.ai.azure.com/chat/completions)" \
+          payload = {
+              "model": "gpt-4o-mini",
+              "messages": [
+                  {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
+                  {"role": "user", "content": prompt}
+              ],
+              "response_format": { "type": "json_object" },
+              "temperature": 0.1
+          }
+          
+          with open('payload.json', 'w') as f:
+              json.dump(payload, f)
+          EOF
+
+          # 3. Llamada a GitHub Models usando el archivo payload seguro
+          curl -s -X POST "https://models.inference.ai.azure.com/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GH_MODELS_TOKEN" \
-            -d "{
-              \"model\": \"gpt-4o-mini\",
-              \"messages\": [
-                {
-                  \"role\": \"system\",
-                  \"content\": \"You are a helpful assistant designed to output JSON.\"
-                },
-                {
-                  \"role\": \"user\",
-                  \"content\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-                }
-              ],
-              \"response_format\": { \"type\": \"json_object\" },
-              \"temperature\": 0.1
-            }" > api_response.json
+            -d @payload.json > api_response.json
 
-          # Procesamiento y Salvavidas
+          # 4. Procesamiento y Salvavidas
           python3 << 'EOF' > bugs.json
           import json, sys
           try:
