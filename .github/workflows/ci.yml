@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD N-Body CUDA
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
           exit 1
 
   build-and-test:
-    name: Build and test in container
+    name: Build and test in CUDA container
     needs: ensure-base-image
     runs-on: ubuntu-latest
     container:
@@ -54,31 +54,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Compilar
+      - name: Compilar proyecto con nvcc
         run: make
 
-      - name: Pruebas Unitarias e Integracion
+      - name: Pruebas Unitarias e Integracion (CPU)
         run: make test
-        
-      - name: Ejecutar Simulacion y Generar Datos
-        run: |
-          ./nbody_2d
-          ./nbody_2d -benchmark 0
-
-      - name: Generar Graficos y Animacion con Python
-        run: |
-          python3 scripts/plot_energy.py
-          python3 scripts/plot_scalability.py
-          python3 scripts/plot_efficiency.py
-          python3 scripts/animate_simulation.py
-        
-      - name: Subir Artefactos (Graficos, Datos y Video)
-        uses: actions/upload-artifact@v4
-        if: always() 
-        with:
-          name: entregables-laboratorio-1
-          path: |
-            *.png
-            *.mp4
-            *.dat
-          retention-days: 90
