@@ -1,11 +1,24 @@
 # Sistemas-distribuidos-y-paralelos-LAB-1
 
-## Requisitos Previos
+## Roles del Equipo: 
+- Kernels CUDA: Vicente Aninnat
+- Host/device y memoria: Juan Loyola
+- Integración y validación: Rodrigo Gonzales
+- Git, releases y agentes: Sebastian Tapia
+- Calidad, CI y visualización: Ignacio Celis Castro
+
+## Requisitos Previos para openMP
 Si deseas ejecutar el código localmente sin Docker, asegúrate de tener instalado:
 * Compilador `g++` con soporte para C++17 y OpenMP (`libomp-dev`).
 * Google Test (`libgtest-dev`) para las pruebas unitarias.
 * Python 3 con `matplotlib` y `pandas` para la generación de gráficos.
 * `ffmpeg` para el renderizado del video de la simulación.
+
+## Requisitos de Hardware y Ejecución para CUDA
+Para compilar y ejecutar el proyecto con aceleración, se requiere lo siguiente:
+* **GPU**: GPU NVIDIA compatible con CUDA.
+* **Driver mínimo**: Driver compatible con CUDA 12.x.
+* **Docker**: Si se utiliza Docker, se requiere la imagen `nvidia/cuda:12.x-devel-ubuntu22.04` y el NVIDIA Container Toolkit configurado en el host.
 
 ## Ejecución Automatizada con Docker
 Para garantizar la reproducibilidad y evitar problemas de dependencias, puedes ejecutar el pipeline completo de pruebas, benchmark y generación de gráficos utilizando Docker con los siguientes comandos:
@@ -38,6 +51,22 @@ docker run --rm -v "%cd%":/workspace lab1-nbody bash -c "make clean && make && m
 
 ### Limpiar
 `make clean`
+
+## Flujo de Integración Continua (CI) y Clúster
+La ejecución automatizada se divide en dos entornos:
+
+1. **Pipeline CI (Automático en cada MR/PR)**:
+   - Se ejecuta en contenedores de GitHub Actions/GitLab CI.
+   - **Compilación**: Utiliza `nvcc` para asegurar que no hay errores de sintaxis en CUDA.
+   - **Pruebas (CPU)**: Ejecuta `make test` verificando la lógica core y equivalencia serial. Si falla, el MR es bloqueado.
+   - *Nota: Los tests de GPU en CI están omitidos intencionalmente por falta de hardware acelerado en los runners genéricos.*
+
+2. **Ejecución en Clúster DIINF (Manual para mediciones finales)**:
+   - Mediciones de performance (End-to-End, Kernel-only).
+   - Generación de archivos `.dat` de benchmarks finales (`benchmark_results.dat`, `scaling_analysis.dat`, `blockdim_study.dat`).
+   - Todos los resultados de rendimiento reportados en la entrega provienen exclusivamente de este entorno.
+
+
 
 # Instrucciones Detalladas de Ejecución
 
