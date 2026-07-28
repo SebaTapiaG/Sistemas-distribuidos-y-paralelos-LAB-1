@@ -7,8 +7,12 @@ CXX         = g++
 # Banderas para CUDA (NVCC) y C++ con OpenMP (G++)
 NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra
 CXXFLAGS     = -Wall -Wextra -O3 -fopenmp -std=c++17
-LDFLAGS      = -fopenmp -lcudart
-CUDA_LDFLAGS = -lcudart
+#LDFLAGS      = -fopenmp -lcudart
+#CUDA_LDFLAGS = -lcudart
+CUDA_PATH    ?= /usr/local/cuda
+
+LDFLAGS      = -fopenmp -L$(CUDA_PATH)/lib64 -lcudart
+CUDA_LDFLAGS = -L$(CUDA_PATH)/lib64 -lcudart
 
 # ==============================================================================
 # ARCHIVOS Y OBJETIVOS
