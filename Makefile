@@ -5,7 +5,7 @@ NVCC        = nvcc
 CXX         = g++
 
 # Banderas para CUDA (NVCC) y C++ con OpenMP (G++)
-NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra
+NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra #-arch=sm_89
 CXXFLAGS     = -Wall -Wextra -O3 -fopenmp -std=c++17
 #LDFLAGS      = -fopenmp -lcudart
 #CUDA_LDFLAGS = -lcudart
@@ -25,7 +25,7 @@ CPP_SOURCES = Altmain.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp \
 CU_SOURCES  = kernels/accelerations.cu
 
 HEADERS     = Particle.h NBodySystem.h NBodySimulator.h MetricsCalculator.h \
-              Benchmark.h Visualizer.h kernels/accelerations.cuh
+              Benchmark.h Visualizer.h CudaBuffer.h kernels/accelerations.cuh
 
 # Arreglos de objetos (.o)
 CPP_OBJS    = $(CPP_SOURCES:.cpp=.o)
