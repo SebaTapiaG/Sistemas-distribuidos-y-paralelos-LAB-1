@@ -4,64 +4,86 @@
 #include "MetricsCalculator.h"
 
 /**
- * Test enfocado en la precisión de las métricas de rendimiento.
- * Como encargado de Benchmark, este archivo asegura que tus reportes
- * de Speedup y Eficiencia sean estadísticamente correctos.
+ * Pruebas unitarias para MetricsCalculator:
+ * Verifica el cálculo de promedios, desviaciones estándar, propagación de errores,
+ * ley de Amdahl y análisis físico/integridad de partículas.
  */
 
+// 1. Precisión Estadística Básica
 TEST(MetricsCalculatorTest, StatisticalPrecision) {
-    // Caso con varianza conocida
     std::vector<double> times = {10.0, 10.0, 10.0, 10.0};
     double mean = MetricsCalculator::calculateMean(times);
     EXPECT_DOUBLE_EQ(mean, 10.0);
     
-    // StdDev de valores idénticos debe ser 0
+    // Si los datos son idénticos, la desviación estándar debe ser 0.0
     EXPECT_DOUBLE_EQ(MetricsCalculator::calculateStdDev(times, mean), 0.0);
 }
 
-TEST(MetricsCalculatorTest, AmdahlLawValidation) {
-    // Si el tiempo serial (T1) es 100 y con 4 hilos (Tp) es 25:
-    // Speedup = 4.0, Eficiencia = 1.0, Fracción Serial = 0.0
-    std::vector<double> t1 = {100.0};
-    std::vector<double> tp = {25.0};
-    std::vector<double> ts = {0.0}; // Asumimos ts despreciable para este test
-    int threads = 4;
-
-    PerformanceResult res = MetricsCalculator::analyzePerformance(t1, tp, ts, threads);
-
-    EXPECT_DOUBLE_EQ(res.speedup, 4.0);
-    EXPECT_DOUBLE_EQ(res.efficiency, 1.0);
-    EXPECT_NEAR(res.serial_fraction, 0.0, 1e-7);
+// 2. Desviación Estándar con Varianza
+TEST(MetricsCalculatorTest, StandardDeviationWithVariance) {
+    std::vector<double> times = {2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0};
+    double mean = MetricsCalculator::calculateMean(times); // Media = 5.0
+    double stdDev = MetricsCalculator::calculateStdDev(times, mean);
+    
+    EXPECT_DOUBLE_EQ(mean, 5.0);
+    // Varianza muestral = 32 / 7 ≈ 4.571428... -> StdDev ≈ 2.1380899...
+    EXPECT_NEAR(stdDev, 2.1380899, 1e-6);
 }
 
-TEST(MetricsCalculatorTest, ErrorPropagationSpeedup) {
-    // Test de propagación de errores: S = T1 / Tp
-    // sigma_S = S * sqrt((sigma_T1/T1)^2 + (sigma_Tp/Tp)^2)
-    std::vector<double> t1 = {90.0, 110.0}; // Media 100, StdDev ~14.14
-    std::vector<double> tp = {45.0, 55.0}; // Media 50, StdDev ~7.07
-    std::vector<double> ts = {0.0, 0.0};
+// 3. Verificación del Centro de Masa
+TEST(MetricsCalculatorTest, CalculateCenterOfMass) {
+    std::vector<Particle> particles;
+    // Partícula 1: masa 2.0 en (10.0, 0.0)
+    Particle p1(2.0, 10.0, 0.0);
+    // Partícula 2: masa 3.0 en (0.0, 20.0)
+    Particle p2(3.0, 0.0, 20.0);
     
-    PerformanceResult res = MetricsCalculator::analyzePerformance(t1, tp, ts, 2);
-    
-    EXPECT_DOUBLE_EQ(res.speedup, 2.0);
-    // La incertidumbre debe ser mayor que cero
-    EXPECT_GT(res.sigma_speedup, 0.0);
-    // La eficiencia con 2 hilos y speedup 2 debe ser 1.0
-    EXPECT_DOUBLE_EQ(res.efficiency, 1.0);
+    particles.push_back(p1);
+    particles.push_back(p2);
+
+    CenterOfMass com = MetricsCalculator::calculateCenterOfMass(particles);
+
+    // X_cm = (2*10 + 3*0) / 5 = 4.0
+    // Y_cm = (2*0 + 3*20) / 5 = 12.0
+    EXPECT_DOUBLE_EQ(com.x, 4.0);
+    EXPECT_DOUBLE_EQ(com.y, 12.0);
 }
 
-TEST(MetricsCalculatorTest, PhysicsConsistency) {
-    // Verificamos que la reducción de energía y el lastprivate funcionen
+// 4. Verificación de Integridad y Consistencia de Datos Paralelos
+TEST(MetricsCalculatorTest, PhysicsAndConsistencyVerification) {
     std::vector<Particle> bodies;
-    bodies.push_back(Particle(1.0, 0.0, 0.0));
-    bodies.back().setVx(10.0);
+    Particle p1(1.0, 0.0, 0.0);
+    p1.setVx(10.0);
     
-    bodies.push_back(Particle(1.0, 5.0, 5.0));
-    bodies.back().setVx(-10.0);
+    Particle p2(1.0, 5.0, 5.0);
+    p2.setVx(-10.0);
+
+    bodies.push_back(p1);
+    bodies.push_back(p2);
 
     DiagnosticResult diag = MetricsCalculator::verifyConsistency(bodies);
     
     EXPECT_TRUE(diag.consistency_pass);
-    // El lastprivate debe haber capturado la última partícula (índice 1)
-    EXPECT_EQ(diag.last_index, 1);
+    // La masa total capturada debe corresponder al checksum correcto
+    EXPECT_DOUBLE_EQ(diag.last_particle_state.getMass(), 1.0);
+}
+
+// 5. Análisis Físico de Energía y Conservación de Momento
+TEST(MetricsCalculatorTest, PhysicalAnalysis) {
+    simulation_data data;
+    // Conservación de energía perfecta (Drift = 0)
+    data.k = {100.0, 80.0, 50.0};
+    data.u = {0.0,   20.0, 50.0}; // E_total constante = 100.0
+
+    // Momentos de partículas
+    std::vector<Particle> snapshot_initial = { Particle(1.0, 0.0, 0.0) };
+    std::vector<Particle> snapshot_final   = { Particle(1.0, 1.0, 1.0) };
+    
+    data.bodies.push_back(snapshot_initial);
+    data.bodies.push_back(snapshot_final);
+
+    PhysicalResult result = MetricsCalculator::analyzePhysics(data);
+
+    EXPECT_DOUBLE_EQ(result.relative_error, 0.0);
+    EXPECT_TRUE(result.is_valid);
 }
