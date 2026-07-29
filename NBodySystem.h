@@ -2,6 +2,9 @@
 
 #include "Particle.h"
 #include <vector>
+#include <memory>
+#include "CudaBuffer.h"
+#include "kernels/accelerations.cuh"
 
 /**
  * NBodySystem

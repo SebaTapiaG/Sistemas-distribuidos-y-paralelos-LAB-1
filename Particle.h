@@ -38,6 +38,8 @@ class Particle {
         void setY(double y_);
         void setVx(double vx_);
         void setVy(double vy_);
+        void setAx(double new_ax) { ax = new_ax; }
+        void setAy(double new_ay) { ay = new_ay; }
 
     // ** Pone ax = ay = 0 (llamar antes de acumular contribuciones). */
     void zeroAcceleration();

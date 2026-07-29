@@ -4,10 +4,15 @@
 #include <fstream>
 #include <random>
 #include <iomanip>
+#include <numeric>
+#include <chrono>
 
 Benchmark::Benchmark(int reps, int s, double delta_t, unsigned int s_seed) 
     : repetitions(reps), steps(s), dt(delta_t), seed(s_seed) {
 }
+
+Benchmark::Benchmark(const NBodySystem& system, int num_steps, double delta_t, int reps)
+    : base_system(system), steps(num_steps), dt(delta_t), repetitions(reps), seed(123) {}
 
 // Ya no se usa
 std::string Benchmark::generateFileName(std::string prefix, int /*sync_type*/, int /*task_type*/, int /*energy_method*/, int /*schedule_type*/, int /*chunk_size*/) {
@@ -330,4 +335,312 @@ double Benchmark::calculateTheoricalSpeedup(double f, int p) {
         return 1.0;
     }
     return 1.0 / (f + ((1.0 - f) / (double)p));
+}
+
+//METODS DE BENCHMARKING PARA CUDA
+// Auxiliar para calculo de media y desviación estándar de un vector de tiempos en milisegundos
+MeasurementResult Benchmark::calculateStats(const std::vector<double>& times_ms) {
+    if (times_ms.empty()) return {0.0, 0.0};
+    double sum = std::accumulate(times_ms.begin(), times_ms.end(), 0.0);
+    double mean = sum / times_ms.size();
+    double sq_sum = 0.0;
+    for (double t : times_ms) sq_sum += (t - mean) * (t - mean);
+    double stddev = (times_ms.size() > 1) ? std::sqrt(sq_sum / (times_ms.size() - 1)) : 0.0;
+    return {mean, stddev};
+}
+bool Benchmark::verifyCpuGpuCorrectness(NBodySimulator& sim_cpu, NBodySimulator& sim_gpu, 
+                                        int variant, int block_size, double tolerance) {
+    sim_cpu.runCpuSerial(1, dt);
+    sim_gpu.stepGpuEndToEnd(variant, block_size);
+
+    const auto& bodies_cpu = sim_cpu.getSystem().getBodies();
+    const auto& bodies_gpu = sim_gpu.getSystem().getBodies();
+
+    if (bodies_cpu.size() != bodies_gpu.size()) return false;
+
+    double max_diff = 0.0;
+    for (size_t i = 0; i < bodies_cpu.size(); ++i) {
+        double diff_ax = std::abs(bodies_cpu[i].getAx() - bodies_gpu[i].getAx());
+        double diff_ay = std::abs(bodies_cpu[i].getAy() - bodies_gpu[i].getAy());
+
+        if (diff_ax > max_diff) max_diff = diff_ax;
+        if (diff_ay > max_diff) max_diff = diff_ay;
+
+        if (diff_ax > tolerance || diff_ay > tolerance) {
+            std::cerr << "[ERROR] Divergencia excesiva en cuerpo " << i 
+                      << " | Max Diff: " << max_diff << " (Tolerancia: " << tolerance << ")\n";
+            return false;
+        }
+    }
+
+    std::cout << "[VERIFICADO] Pruebas CPU vs GPU DENTRO de tolerancia (" 
+              << tolerance << "). Dif Max: " << max_diff << std::endl;
+    return true;
+}
+
+MeasurementResult Benchmark::benchmarkCpuSerial(int runs) {
+    std::vector<double> times_ms;
+    times_ms.reserve(runs);
+
+    for (int r = 0; r < runs; ++r) {
+        NBodySystem sys_copy = base_system;
+        NBodySimulator sim_cpu(sys_copy);
+
+        auto start = std::chrono::steady_clock::now();
+        sim_cpu.runCpuSerial(steps, dt);
+        auto end = std::chrono::steady_clock::now();
+
+        times_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
+    }
+
+    return calculateStats(times_ms);
+}
+
+MeasurementResult Benchmark::benchmarkKernelOnly(NBodySimulator& simulator, int variant, int block_size, int runs) {
+    std::vector<double> times_ms;
+    times_ms.reserve(runs);
+
+    simulator.prepareGpu(); 
+
+    for (int r = 0; r < runs; ++r) {
+        cudaDeviceSynchronize();
+        auto start = std::chrono::steady_clock::now();
+
+        simulator.stepGpuKernelOnly(variant, block_size);
+
+        cudaDeviceSynchronize();
+        auto end = std::chrono::steady_clock::now();
+
+        times_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
+    }
+
+    simulator.finishGpu();
+    return calculateStats(times_ms);
+}
+
+MeasurementResult Benchmark::benchmarkEndToEnd(NBodySimulator& simulator, int variant, int block_size, int runs) {
+    std::vector<double> times_ms;
+    times_ms.reserve(runs);
+
+    for (int r = 0; r < runs; ++r) {
+        cudaDeviceSynchronize();
+        auto start = std::chrono::steady_clock::now();
+
+        simulator.stepGpuEndToEnd(variant, block_size);
+
+        cudaDeviceSynchronize();
+        auto end = std::chrono::steady_clock::now();
+
+        times_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
+    }
+
+    return calculateStats(times_ms);
+}
+
+CpuGpuComparison Benchmark::compareCpuGpuKernelOnly(int n_bodies, int variant, int block_size, int runs) {
+    MeasurementResult cpu_res = benchmarkCpuSerial(runs);
+
+    NBodySystem sys_gpu = base_system;
+    NBodySimulator sim_gpu(sys_gpu);
+    MeasurementResult kernel_res = benchmarkKernelOnly(sim_gpu, variant, block_size, runs);
+
+    double speedup = (kernel_res.mean_ms > 0.0) ? (cpu_res.mean_ms / kernel_res.mean_ms) : 0.0;
+
+    return { n_bodies, variant, block_size, cpu_res, kernel_res, {0.0, 0.0}, speedup, 0.0, 0.0 };
+}
+
+CpuGpuComparison Benchmark::compareCpuGpuEndToEnd(int n_bodies, int variant, int block_size, int runs) {
+    MeasurementResult cpu_res = benchmarkCpuSerial(runs);
+
+    NBodySystem sys_gpu = base_system;
+    NBodySimulator sim_gpu(sys_gpu);
+    MeasurementResult e2e_res = benchmarkEndToEnd(sim_gpu, variant, block_size, runs);
+
+    double speedup = (e2e_res.mean_ms > 0.0) ? (cpu_res.mean_ms / e2e_res.mean_ms) : 0.0;
+
+    return { n_bodies, variant, block_size, cpu_res, {0.0, 0.0}, e2e_res, 0.0, speedup, 0.0 };
+}
+
+CpuGpuComparison Benchmark::compareCpuGpu(int n_bodies, int variant, int block_size, int runs) {
+    MeasurementResult cpu_res = benchmarkCpuSerial(runs);
+
+    NBodySystem sys_gpu1 = base_system;
+    NBodySimulator sim_gpu1(sys_gpu1);
+    MeasurementResult kernel_res = benchmarkKernelOnly(sim_gpu1, variant, block_size, runs);
+
+    NBodySystem sys_gpu2 = base_system;
+    NBodySimulator sim_gpu2(sys_gpu2);
+    MeasurementResult e2e_res = benchmarkEndToEnd(sim_gpu2, variant, block_size, runs);
+
+    double speedup_kernel = (kernel_res.mean_ms > 0.0) ? (cpu_res.mean_ms / kernel_res.mean_ms) : 0.0;
+    double speedup_e2e    = (e2e_res.mean_ms > 0.0)    ? (cpu_res.mean_ms / e2e_res.mean_ms)    : 0.0;
+
+    double overhead_ms = e2e_res.mean_ms - kernel_res.mean_ms;
+    double amdahl_f = (cpu_res.mean_ms > 0.0) ? (overhead_ms / cpu_res.mean_ms) : 0.0;
+    if (amdahl_f < 0.0) amdahl_f = 0.0;
+
+    return {
+        n_bodies, variant, block_size,
+        cpu_res, kernel_res, e2e_res,
+        speedup_kernel, speedup_e2e, amdahl_f
+    };
+}
+
+std::vector<CpuGpuComparison> Benchmark::runSuite40(const std::vector<int>& n_particles_list, 
+                                                     int mode,
+                                                     const std::vector<int>& block_sizes, 
+                                                     int runs) {
+    std::vector<CpuGpuComparison> results;
+    results.reserve(n_particles_list.size() * 2 * block_sizes.size());
+
+    for (int N : n_particles_list) {
+        // Re-generar el sistema base con N partículas para esta iteración
+        base_system = NBodySystem(1.0, 1e-3); // Reconstruir con G y epsilon por defecto
+        setupRandomSystem(base_system, N);
+
+        for (int variant : {0, 1}) {
+            for (int block : block_sizes) {
+                CpuGpuComparison comp;
+
+                if (mode == 0) {
+                    std::cout << "[SUITE KERNEL 40] N: " << N << " | Var: " << variant << " | Block: " << block << "...\n";
+                    comp = compareCpuGpuKernelOnly(N, variant, block, runs);
+                } 
+                else if (mode == 1) {
+                    std::cout << "[SUITE E2E 40] N: " << N << " | Var: " << variant << " | Block: " << block << "...\n";
+                    comp = compareCpuGpuEndToEnd(N, variant, block, runs);
+                } 
+                else {
+                    std::cout << "[SUITE COMPLETA] N: " << N << " | Var: " << variant << " | Block: " << block << "...\n";
+                    comp = compareCpuGpu(N, variant, block, runs);
+                }
+
+                results.push_back(comp);
+            }
+        }
+    }
+
+    return results;
+}
+
+void Benchmark::exportComparisonToCSV(const std::string& filename, const std::vector<CpuGpuComparison>& results) {
+    std::ofstream file(filename);
+    file << "N,Variant,BlockSize,CPU_Mean_ms,CPU_StdDev,Kernel_Mean_ms,Kernel_StdDev,E2E_Mean_ms,E2E_StdDev,Speedup_Kernel,Speedup_E2E,Amdahl_f\n";
+
+    for (const auto& r : results) {
+        file << r.num_particles << ","
+             << r.variant << ","
+             << r.block_size << ","
+             << std::fixed << std::setprecision(4)
+             << r.cpu_serial.mean_ms << "," << r.cpu_serial.stddev_ms << ","
+             << r.gpu_kernel.mean_ms << "," << r.gpu_kernel.stddev_ms << ","
+             << r.gpu_end_to_end.mean_ms << "," << r.gpu_end_to_end.stddev_ms << ","
+             << r.speedup_kernel << ","
+             << r.speedup_e2e << ","
+             << r.amdahl_f << "\n";
+    }
+    file.close();
+    std::cout << "Resultados guardados exitosamente en: " << filename << std::endl;
+}
+// ── 1. Generación de benchmark_results.dat ──────────────────────────────────
+void Benchmark::exportBenchmarkResultsDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results) {
+    std::ofstream file(filename);
+    
+    // Encabezados tabulares
+    file << std::left 
+         << std::setw(10) << "N" 
+         << std::setw(10) << "Variant" 
+         << std::setw(12) << "BlockSize" 
+         << std::setw(16) << "CPU_Mean_ms" 
+         << std::setw(16) << "CPU_StdDev" 
+         << std::setw(16) << "Kernel_Mean_ms" 
+         << std::setw(16) << "Kernel_StdDev" 
+         << std::setw(16) << "E2E_Mean_ms" 
+         << std::setw(16) << "E2E_StdDev" << "\n";
+
+    file << std::fixed << std::setprecision(6);
+    for (const auto& r : results) {
+        file << std::left 
+             << std::setw(10) << r.num_particles
+             << std::setw(10) << r.variant
+             << std::setw(12) << r.block_size
+             << std::setw(16) << r.cpu_serial.mean_ms
+             << std::setw(16) << r.cpu_serial.stddev_ms
+             << std::setw(16) << r.gpu_kernel.mean_ms
+             << std::setw(16) << r.gpu_kernel.stddev_ms
+             << std::setw(16) << r.gpu_end_to_end.mean_ms
+             << std::setw(16) << r.gpu_end_to_end.stddev_ms << "\n";
+    }
+    file.close();
+    std::cout << "[VISUALIZER] Generado: " << filename << std::endl;
+}
+
+// ── 2. Generación de scaling_analysis.dat ───────────────────────────────────
+void Benchmark::exportScalingAnalysisDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results) {
+    std::ofstream file(filename);
+    
+    file << std::left 
+         << std::setw(10) << "N" 
+         << std::setw(10) << "Variant" 
+         << std::setw(12) << "BlockSize" 
+         << std::setw(16) << "Speedup_Kernel" 
+         << std::setw(16) << "Speedup_E2E" 
+         << std::setw(16) << "SerialFrac_f" << "\n";
+
+    file << std::fixed << std::setprecision(6);
+    for (const auto& r : results) {
+        file << std::left 
+             << std::setw(10) << r.num_particles
+             << std::setw(10) << r.variant
+             << std::setw(12) << r.block_size
+             << std::setw(16) << r.speedup_kernel
+             << std::setw(16) << r.speedup_e2e
+             << std::setw(16) << r.amdahl_f << "\n";
+    }
+    file.close();
+    std::cout << "[VISUALIZER] Generado: " << filename << std::endl;
+}
+
+// ── 3. Generación de blockdim_study.dat ─────────────────────────────────────
+void Benchmark::exportBlockDimStudyDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results) {
+    std::ofstream file(filename);
+    
+    // Vista especializada para analizar el comportamiento al variar el tamaño de bloque
+    file << std::left 
+         << std::setw(12) << "BlockSize" 
+         << std::setw(10) << "N" 
+         << std::setw(10) << "Variant" 
+         << std::setw(16) << "Kernel_Mean_ms" 
+         << std::setw(16) << "E2E_Mean_ms" 
+         << std::setw(16) << "Speedup_Kernel" << "\n";
+
+    file << std::fixed << std::setprecision(6);
+    for (const auto& r : results) {
+        file << std::left 
+             << std::setw(12) << r.block_size
+             << std::setw(10) << r.num_particles
+             << std::setw(10) << r.variant
+             << std::setw(16) << r.gpu_kernel.mean_ms
+             << std::setw(16) << r.gpu_end_to_end.mean_ms
+             << std::setw(16) << r.speedup_kernel << "\n";
+    }
+    file.close();
+    std::cout << "[VISUALIZER] Generado: " << filename << std::endl;
+}
+
+// ── Integrador: Ejecuta y exporta las 3 salidas automáticamente ──────────────
+void Benchmark::runAndExportAllDAT(const std::vector<int>& n_particles_list, 
+                                   const std::vector<int>& block_sizes, 
+                                   int runs) {
+    std::cout << "\n=== EJECUTANDO BENCHMARK COMPLETO PARA GPU VISUALIZER ===\n";
+    
+    // Modo 2 ejecuta comparaciones completas (CPU, Kernel y E2E)
+    auto results = runSuite40(n_particles_list, 2, block_sizes, runs);
+
+    // Genera los 3 archivos .dat en el directorio raíz de ejecución
+    exportBenchmarkResultsDAT("benchmark_results.dat", results);
+    exportScalingAnalysisDAT("scaling_analysis.dat", results);
+    exportBlockDimStudyDAT("blockdim_study.dat", results);
+
+    std::cout << "=== TODOS LOS ARCHIVOS .DAT FUERON GENERADOS CON ÉXITO ===\n\n";
 }

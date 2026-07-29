@@ -19,8 +19,9 @@
 template <typename T>
 class CudaBuffer {
 private:
-    T* d_ptr;
     size_t num_elements;
+    T* d_ptr;
+    
 
 public:
     // Constructor
