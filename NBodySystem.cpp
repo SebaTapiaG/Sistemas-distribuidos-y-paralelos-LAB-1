@@ -285,3 +285,31 @@ void NBodySystem::computeAccelerationsGpu(int variant, int block_size) {
         N, G_const, softening_eps, variant, block_size
     );
 }
+// Constructor de Copia Profunda
+NBodySystem::NBodySystem(const NBodySystem& other)
+    : particles(other.particles),
+      num_particles(other.num_particles),
+      G(other.G),
+      epsilon(other.epsilon),
+      h_x(other.h_x), h_y(other.h_y),
+      h_vx(other.h_vx), h_vy(other.h_vy),
+      h_mass(other.h_mass), h_ax(other.h_ax), h_ay(other.h_ay),
+      gpu_allocated(false) // La GPU se asignará por separado en la copia
+{
+    // Los unique_ptr d_* quedan como nullptr por defecto
+}
+
+NBodySystem& NBodySystem::operator=(const NBodySystem& other) {
+    if (this != &other) {
+        freeGpuMemory();
+        particles = other.particles;
+        num_particles = other.num_particles;
+        G = other.G;
+        epsilon = other.epsilon;
+        h_x = other.h_x; h_y = other.h_y;
+        h_vx = other.h_vx; h_vy = other.h_vy;
+        h_mass = other.h_mass; h_ax = other.h_ax; h_ay = other.h_ay;
+        gpu_allocated = false;
+    }
+    return *this;
+}

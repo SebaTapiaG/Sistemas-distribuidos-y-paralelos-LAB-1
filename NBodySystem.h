@@ -110,6 +110,10 @@ class NBodySystem {
         /** Cambia el suavizado de Plummer del sistema. */
         void setEpsilon(double newEps);
 
+        // --- CONSTRUCTOR Y OPERADOR DE COPIA (Necesarios para Benchmark) ---
+        NBodySystem(const NBodySystem& other);
+        NBodySystem& operator=(const NBodySystem& other);
+
 
         // ── Métodos de Gestión SoA y GPU (Nuevos) ───────────────
         void convertAosToSoa(); // Llena h_x, h_y, etc., a partir de 'bodies'

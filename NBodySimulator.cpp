@@ -479,6 +479,8 @@ void NBodySimulator::calculateEnergyGpu(int method, int block_size, double* d_u_
         d_k_out
     );
 }
+//temporalmente reemplazada por la version con grabacion de fotogramas opcional
+/*
 // ── Pipeline de Simulación en GPU (Guardando fotogramas e historia de energía)
 simulation_data NBodySimulator::processBodiesGpu(int iter, int variant, int energy_method, int block_size) {
     simulation_data data;
@@ -517,5 +519,68 @@ simulation_data NBodySimulator::processBodiesGpu(int iter, int variant, int ener
     d_k_vec.ToHost(data.k.data());
 
     // La memoria de d_u_vec y d_k_vec en VRAM se libera automáticamente aquí al salir
+    return data;
+}
+*/
+// ── Paso de simulación completo en GPU (Integración + Energía) ─────────────
+void NBodySimulator::stepEulerGpu(int variant, int energy_method, int block_size, double* d_u_ptr, double* d_k_ptr) {
+    // 1. Cálculo de aceleración e integración física
+    integrateEulerGpu(variant, block_size);
+
+    // 2. Cálculo de energía (si se pasaron punteros válidos en VRAM)
+    if (d_u_ptr && d_k_ptr) {
+        calculateEnergyGpu(energy_method, block_size, d_u_ptr, d_k_ptr);
+    }
+}
+//sobrecarga de processBodiesGpu con parámetro opcional para grabar fotogramas
+simulation_data NBodySimulator::processBodiesGpu(
+    int iter, 
+    int variant, 
+    int energy_method, 
+    int block_size, 
+    bool record_frames)
+{
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    if (record_frames) {
+        data.bodies.resize(iter);
+    }
+
+    const int N = static_cast<int>(system->getBodies().size());
+    if (N == 0) return data;
+
+    // 1. Preparación de memoria (H2D) fuera del loop
+    system->convertAosToSoa();
+    system->allocateGpuMemory();
+    system->copyHostToDevice();
+
+    // Buffers temporales en VRAM para la historia de energía
+    CudaBuffer<double> d_u_vec(iter);
+    CudaBuffer<double> d_k_vec(iter);
+
+    // 2. Bucle principal
+    for (int i = 0; i < iter; ++i) {
+        // A y B) Cómputo 100% en GPU
+        stepEulerGpu(variant, energy_method, block_size, d_u_vec.get() + i, d_k_vec.get() + i);
+
+        // C) Descarga Opcional: Solo si explícitamente se pidieron fotogramas
+        if (record_frames) {
+            system->copyDeviceToHost();
+            system->convertSoaToAos();
+            data.bodies[i] = system->getBodies();
+        }
+    }
+
+    // 3. Descargar el estado FINAL del sistema a Host (sólo una vez al terminar)
+    if (!record_frames) {
+        system->copyDeviceToHost();
+        system->convertSoaToAos();
+    }
+
+    // 4. Descarga masiva (D2H) de todas las energías
+    d_u_vec.ToHost(data.u.data());
+    d_k_vec.ToHost(data.k.data());
+
     return data;
 }

@@ -101,8 +101,8 @@ public:
 
     // Mediciones Individuales Exigidas por Pauta
     MeasurementResult benchmarkCpuSerial(int runs = 10);
-    MeasurementResult benchmarkKernelOnly(NBodySimulator& simulator, int variant = 0, int block_size = 256, int runs = 10);
-    MeasurementResult benchmarkEndToEnd(NBodySimulator& simulator, int variant = 0, int block_size = 256, int runs = 10);
+    MeasurementResult benchmarkKernelOnly(NBodySimulator& simulator, int variant=0, int energy_method=0, int block_size=256,double* d_u_ptr=nullptr, double* d_k_ptr=nullptr, int runs=10);
+    MeasurementResult benchmarkEndToEnd(NBodySimulator& simulator, int variant = 0,int energy_method=0, int block_size = 256, int runs = 10);
 
     // Las 3 Variantes de compareCpuGpu
     CpuGpuComparison compareCpuGpuKernelOnly(int n_bodies, int variant = 0, int block_size = 256, int runs = 10);

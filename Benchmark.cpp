@@ -350,7 +350,7 @@ MeasurementResult Benchmark::calculateStats(const std::vector<double>& times_ms)
 }
 bool Benchmark::verifyCpuGpuCorrectness(NBodySimulator& sim_cpu, NBodySimulator& sim_gpu, 
                                         int variant, int block_size, double tolerance) {
-    sim_cpu.runCpuSerial(1, dt);
+    sim_cpu.processBodies();
     sim_gpu.stepGpuEndToEnd(variant, block_size);
 
     const auto& bodies_cpu = sim_cpu.getSystem().getBodies();
@@ -387,7 +387,7 @@ MeasurementResult Benchmark::benchmarkCpuSerial(int runs) {
         NBodySimulator sim_cpu(sys_copy);
 
         auto start = std::chrono::steady_clock::now();
-        sim_cpu.runCpuSerial(steps, dt);
+        sim_cpu.processBodies(steps);
         auto end = std::chrono::steady_clock::now();
 
         times_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
@@ -396,7 +396,7 @@ MeasurementResult Benchmark::benchmarkCpuSerial(int runs) {
     return calculateStats(times_ms);
 }
 
-MeasurementResult Benchmark::benchmarkKernelOnly(NBodySimulator& simulator, int variant, int block_size, int runs) {
+MeasurementResult Benchmark::benchmarkKernelOnly(NBodySimulator& simulator, int variant, int energy_method, int block_size,double* d_u_ptr, double* d_k_ptr, int runs) {
     std::vector<double> times_ms;
     times_ms.reserve(runs);
 
@@ -406,7 +406,9 @@ MeasurementResult Benchmark::benchmarkKernelOnly(NBodySimulator& simulator, int 
         cudaDeviceSynchronize();
         auto start = std::chrono::steady_clock::now();
 
-        simulator.stepGpuKernelOnly(variant, block_size);
+        for(int step = 0; step < steps; ++step) {
+            simulator.stepEulerGpu(variant, energy_method, block_size, d_u_ptr, d_k_ptr);
+        }
 
         cudaDeviceSynchronize();
         auto end = std::chrono::steady_clock::now();
@@ -418,7 +420,7 @@ MeasurementResult Benchmark::benchmarkKernelOnly(NBodySimulator& simulator, int 
     return calculateStats(times_ms);
 }
 
-MeasurementResult Benchmark::benchmarkEndToEnd(NBodySimulator& simulator, int variant, int block_size, int runs) {
+MeasurementResult Benchmark::benchmarkEndToEnd(NBodySimulator& simulator, int variant, int block_size, int energy_method, int runs, bool record_frames) {
     std::vector<double> times_ms;
     times_ms.reserve(runs);
 
@@ -426,7 +428,7 @@ MeasurementResult Benchmark::benchmarkEndToEnd(NBodySimulator& simulator, int va
         cudaDeviceSynchronize();
         auto start = std::chrono::steady_clock::now();
 
-        simulator.stepGpuEndToEnd(variant, block_size);
+        simulator.processBodiesGpu(steps,variant, energy_method, block_size, record_frames);
 
         cudaDeviceSynchronize();
         auto end = std::chrono::steady_clock::now();
