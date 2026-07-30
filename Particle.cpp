@@ -35,7 +35,7 @@ void Particle::setAx(double ax){
 }
 
 void Particle::setAy(double ay){
-    this->ax = ay;
+    this->ay = ay;
 }
 
 double Particle::getMass() const {

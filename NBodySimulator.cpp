@@ -584,3 +584,21 @@ simulation_data NBodySimulator::processBodiesGpu(
 
     return data;
 }
+
+void NBodySimulator::resetGpuStateFromBase() {
+    if (!system) return;
+
+    // 1. Obtenemos las partículas desde CPU usand getBodies()
+    const auto& particles = system->getBodies();
+    int N = static_cast<int>(particles.size());
+    if (N == 0) return;
+
+    // 2. Re-sincronizamos el arreglo AoS a SoA interno en CPU
+    system->convertAosToSoa();
+
+    // 3. Volvemos a transferir los datos iniciales de la CPU a la GPU (H2D)
+    system->copyHostToDevice();
+
+    // 4. Sincronizamos la GPU para asegurar que esté lista antes del cronómetro
+    CUDA_CHECK(cudaDeviceSynchronize());
+}

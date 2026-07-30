@@ -90,12 +90,26 @@ test_simulation: Particle.o NBodySystem.o NBodySimulator.o
 
 # Ejecuta tanto la suite GoogleTest como todos los tests unitarios de CUDA
 test: $(CU_OBJS)
-	# 1. Pruebas unitarias C++/OpenMP con GoogleTest
+	# 0. Instalar GTest si no está presente en Colab
+	@if [ ! -d "/usr/include/gtest" ]; then \
+		echo "Instalando Google Test..."; \
+		apt-get update && apt-get install -y libgtest-dev; \
+	fi
+
+	# 0.1 Compilar kernels CUDA a archivos objeto
+	$(NVCC) $(NVCCFLAGS) -c kernels/accelerations.cu -o accelerations.o
+	$(NVCC) $(NVCCFLAGS) -c kernels/integration.cu -o integration.o
+	$(NVCC) $(NVCCFLAGS) -c kernels/energy.cu -o energy.o
+
+	# 1. Pruebas unitarias C++/OpenMP/CUDA con GoogleTest
 	$(CXX) $(CXXFLAGS) -I. -o run_tests \
 		tests/TestParticle.cpp tests/TestNBodySystem.cpp tests/TestNBodySimulator.cpp \
 		tests/TestVisualizer.cpp tests/TestMetricsCalculator.cpp tests/TestBenchmark.cpp \
+		tests/TestBenchmarkGPU.cpp \
+		tests/TestSuiteGPU.cpp \
 		Particle.cpp NBodySystem.cpp NBodySimulator.cpp Visualizer.cpp MetricsCalculator.cpp Benchmark.cpp \
-		$(LDFLAGS) -lgtest -lgtest_main -pthread
+		accelerations.o integration.o energy.o \
+		-L/usr/local/cuda/lib64 -lcudart $(LDFLAGS) -lgtest -lgtest_main -pthread
 	./run_tests
 
 	# 2. Test unitario de Aceleraciones

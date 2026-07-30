@@ -79,6 +79,13 @@ class NBodySimulator {
         int energy_method = 0, 
         int block_size = 256, 
         bool record_frames = false);
+        /**
+        * Resetea el estado de los buffers en la GPU cargando nuevamente 
+        * los datos iniciales desde el NBodySystem de la CPU.
+        * Útil para aislar benchmarks Kernel-Only sin medir transferencias en el tiempo.
+        */
+        void resetGpuStateFromBase();
 };
+
 
 #endif

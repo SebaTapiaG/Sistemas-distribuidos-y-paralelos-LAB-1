@@ -41,14 +41,14 @@ struct CpuGpuComparison {
 
 class Benchmark {
 private:
+    NBodySystem base_system;
     int repetitions;
     int steps;
     double dt;
     unsigned int seed;
 
     std::string generateFileName(std::string prefix, int sync_type, int task_type, int energy_method, int schedule_type, int chunk_size);
-    NBodySystem base_system;
-    static MeasurementResult calculateStats(const std::vector<double>& times_ms);
+
 
 public:
     static PerformanceResult analyzePerformance(const std::vector<double>& t1_times, 
@@ -92,46 +92,43 @@ public:
 
     void setupRandomSystem(NBodySystem& system, int n);
 
+    // Métodos auxiliares de estadística
+    static MeasurementResult calculateStats(const std::vector<double>& times_ms);
 
-    // ── Métodos del Lab 2 (CUDA / GPU Benchmark) ────────────────────────────
-    
-    // Verificación de tolerancia (CPU vs GPU)
-    bool verifyCpuGpuCorrectness(NBodySimulator& sim_cpu, NBodySimulator& sim_gpu, 
-                                 int variant = 0, int block_size = 256, double tolerance = 1e-5);
-
-    // Mediciones Individuales Exigidas por Pauta
+    // Mediciones Individuales
     MeasurementResult benchmarkCpuSerial(int runs = 10);
-    MeasurementResult benchmarkKernelOnly(NBodySimulator& simulator, int variant=0, int energy_method=0, int block_size=256,double* d_u_ptr=nullptr, double* d_k_ptr=nullptr, int runs=10);
-    MeasurementResult benchmarkEndToEnd(NBodySimulator& simulator, int variant = 0,int energy_method=0, int block_size = 256, int runs = 10);
 
-    // Las 3 Variantes de compareCpuGpu
-    CpuGpuComparison compareCpuGpuKernelOnly(int n_bodies, int variant = 0, int block_size = 256, int runs = 10);
-    CpuGpuComparison compareCpuGpuEndToEnd(int n_bodies, int variant = 0, int block_size = 256, int runs = 10);
-    CpuGpuComparison compareCpuGpu(int n_bodies, int variant = 0, int block_size = 256, int runs = 10);
+    MeasurementResult benchmarkKernelOnly(
+        NBodySimulator& simulator, 
+        int variant = 0, 
+        int energy_method = 0, 
+        int block_size = 256, 
+        double* d_u_ptr = nullptr, 
+        double* d_k_ptr = nullptr, 
+        int runs = 10
+    );
 
-    // Generador para Suites de Pruebas (Kernel Only, E2E o Combinado)
-    std::vector<CpuGpuComparison> runSuite40(const std::vector<int>& n_particles_list, 
-                                             int mode = 0,
-                                             const std::vector<int>& block_sizes = {64, 128, 256, 512, 1024}, 
-                                             int runs = 10);
+    MeasurementResult benchmarkEndToEnd(
+        int variant = 0, 
+        int energy_method = 0, 
+        int block_size = 256, 
+        int runs = 10
+    );
+    // Métodos para exportar y formatear resultados GPU
+    static void writeGpuHeader(const std::string& filename);
+    static void saveGpuComparison(const std::string& filename, const CpuGpuComparison& res);
 
-    // Exportación a CSV (Lab 2)
-    static void exportComparisonToCSV(const std::string& filename, const std::vector<CpuGpuComparison>& results);
-    // ── Métodos de Exportación para el Módulo Visualizer (Lab 2 GPU) ──────────────
-
-    // 1. Genera 'benchmark_results.dat' (Tiempos medios y stddev: CPU vs Kernel vs E2E)
-    static void exportBenchmarkResultsDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results);
-
-    // 2. Genera 'scaling_analysis.dat' (Speedups y Fracción Serial f vs N)
-    static void exportScalingAnalysisDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results);
-
-    // 3. Genera 'blockdim_study.dat' (Impacto de BlockSize / Threads por Bloque)
-    static void exportBlockDimStudyDAT(const std::string& filename, const std::vector<CpuGpuComparison>& results);
-
-    // Método integrador que genera los 3 archivos automáticamente tras correr el Benchmark
-    void runAndExportAllDAT(const std::vector<int>& n_particles_list, 
-                        const std::vector<int>& block_sizes = {64, 128, 256, 512, 1024}, 
-                        int runs = 10);
-};
+    // Orquestador Principal que ejecuta y guarda la comparación
+    CpuGpuComparison runGpuComparisonTest(
+        const std::string& outputFile,
+        int num_particles,
+        int variant = 0,
+        int block_size = 256,
+        int energy_method = 0,
+        int runs = 10
+    );
+    // Método para ejecutar la suite completa de 40 pruebas CPU vs GPU (Kernel y E2E)
+    void runFullGpuTestSuite(const std::string& outputFile, int runs = 5);
+    };
 
 #endif

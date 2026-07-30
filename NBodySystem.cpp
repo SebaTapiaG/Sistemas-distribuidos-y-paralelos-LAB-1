@@ -285,31 +285,53 @@ void NBodySystem::computeAccelerationsGpu(int variant, int block_size) {
         N, G_const, softening_eps, variant, block_size
     );
 }
-// Constructor de Copia Profunda
+// 1. Constructor de Copia
 NBodySystem::NBodySystem(const NBodySystem& other)
-    : particles(other.particles),
-      num_particles(other.num_particles),
-      G(other.G),
-      epsilon(other.epsilon),
-      h_x(other.h_x), h_y(other.h_y),
-      h_vx(other.h_vx), h_vy(other.h_vy),
+    :bodies(other.bodies), 
+      G_const(other.G_const), 
+      softening_eps(other.softening_eps), 
+      h_x(other.h_x), h_y(other.h_y), 
+      h_vx(other.h_vx), h_vy(other.h_vy), 
       h_mass(other.h_mass), h_ax(other.h_ax), h_ay(other.h_ay),
-      gpu_allocated(false) // La GPU se asignará por separado en la copia
-{
-    // Los unique_ptr d_* quedan como nullptr por defecto
+      gpu_allocated(false) {
+
+    // Si el objeto origen tenía la GPU inicializada, asignamos y copiamos
+    if (other.gpu_allocated) {
+        allocateGpuMemory();
+        copyHostToDevice();
+    }
 }
 
+// 2. Operador de Asignación (=)
 NBodySystem& NBodySystem::operator=(const NBodySystem& other) {
     if (this != &other) {
-        freeGpuMemory();
-        particles = other.particles;
-        num_particles = other.num_particles;
-        G = other.G;
-        epsilon = other.epsilon;
-        h_x = other.h_x; h_y = other.h_y;
-        h_vx = other.h_vx; h_vy = other.h_vy;
-        h_mass = other.h_mass; h_ax = other.h_ax; h_ay = other.h_ay;
+        // Copia de miembros CPU
+        this->bodies = other.bodies;
+        this->G_const = other.G_const;
+        this->softening_eps = other.softening_eps;
+        this->h_x = other.h_x;
+        this->h_y = other.h_y;
+        this->h_vx = other.h_vx;
+        this->h_vy = other.h_vy;
+        this->h_mass = other.h_mass;
+        this->h_ax = other.h_ax;
+        this->h_ay = other.h_ay;
+
+        // Liberación limpia de los smart pointers anteriores de GPU
+        d_x.reset();
+        d_y.reset();
+        d_vx.reset();
+        d_vy.reset();
+        d_mass.reset();
+        d_ax.reset();
+        d_ay.reset();
         gpu_allocated = false;
+
+        // Si el otro objeto tiene la GPU activa, volvemos a reservar y copiar
+        if (other.gpu_allocated) {
+            allocateGpuMemory();
+            copyHostToDevice();
+        }
     }
     return *this;
 }
