@@ -53,6 +53,17 @@ class NBodySimulator {
         // Métodos dedicados a demostrar cláusulas puntuales
         double calculateMetricsFirstprivate();
         double calculateFinalStateLastprivate();
+
+        // ── Métodos de Ejecución en GPU (CUDA) ───────────────────────────────────────
+
+        // Avanza 1 paso temporal en GPU (Aceleraciones GPU + Integración Euler GPU)
+        void integrateEulerGpu(int variant = 0, int block_size = 256);
+
+        // Calcula energía potencial (u) y cinética (k) directamente desde buffers GPU
+        void calculateEnergyGpu(int method, int block_size, double* d_u_out, double* d_k_out);
+
+        // Bucle principal de simulación ejecutado en GPU
+        simulation_data processBodiesGpu(int iter, int variant = 0, int energy_method = 0, int block_size = 256);
 };
 
 #endif

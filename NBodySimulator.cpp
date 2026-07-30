@@ -1,4 +1,6 @@
 #include "NBodySimulator.h"
+#include "kernels/energy.cuh"
+#include "kernels/integration.cuh"
 #include <omp.h>
 #include <cmath>
 #include <stdexcept>
@@ -435,4 +437,85 @@ double NBodySimulator::calculateFinalStateLastprivate() {
     // Al terminar, ultimo_x es garantizadamente la posición X de la última 
     // partícula procesada, sin importar qué hilo ejecutó esa última iteración.
     return ultimo_x;
+}
+
+// ── Integración Euler en GPU (Aceleración + Kick/Drift) ──────────────────────
+void NBodySimulator::integrateEulerGpu(int variant, int block_size) {
+    const int N = static_cast<int>(system->getBodies().size());
+    if (N == 0) return;
+
+    // 1. Lanzar cálculo de aceleraciones en GPU (escribe en d_ax, d_ay)
+    system->computeAccelerationsGpu(variant, block_size);
+
+    // 2. Lanzar Kernel de Integración Euler (Kick & Drift) sobre memoria VRAM
+    launchEulerIntegrationGpu(
+        system->getGpuX(),
+        system->getGpuY(),
+        system->getGpuVx(),
+        system->getGpuVy(),
+        system->getGpuAx(),
+        system->getGpuAy(),
+        N,
+        time_step,
+        block_size
+    );
+}
+void NBodySimulator::calculateEnergyGpu(int method, int block_size, double* d_u_out, double* d_k_out) {
+    const int N = static_cast<int>(system->getBodies().size());
+    if (N <= 0) return;
+
+    launchComputeEnergyGpu(
+        system->getGpuX(),
+        system->getGpuY(),
+        system->getGpuVx(),
+        system->getGpuVy(),
+        system->getGpuMass(),
+        N,
+        system->getG(),
+        system->getEpsilon(),
+        method,
+        block_size,
+        d_u_out,
+        d_k_out
+    );
+}
+// ── Pipeline de Simulación en GPU (Guardando fotogramas e historia de energía)
+simulation_data NBodySimulator::processBodiesGpu(int iter, int variant, int energy_method, int block_size) {
+    simulation_data data;
+    data.u.resize(iter);
+    data.k.resize(iter);
+    data.bodies.resize(iter); // Guardará los 'iter' fotogramas del sistema
+
+    const int N = static_cast<int>(system->getBodies().size());
+    if (N == 0) return data;
+
+    // 1. Preparación de memoria e inicialización en GPU
+    system->convertAosToSoa();
+    system->allocateGpuMemory();
+    system->copyHostToDevice();
+
+    // Reservar historia de energía en VRAM (CudaBuffer RAII)
+    CudaBuffer<double> d_u_vec(iter);
+    CudaBuffer<double> d_k_vec(iter);
+
+    // 2. Bucle principal de simulación
+    for (int i = 0; i < iter; ++i) {
+        // A) Integración física en GPU
+        integrateEulerGpu(variant, block_size);
+
+        // B) Cálculo de energía en GPU (0 sincronizaciones CPU-GPU, escribe en VRAM)
+        calculateEnergyGpu(energy_method, block_size, d_u_vec.get() + i, d_k_vec.get() + i);
+
+        // C) Descargar y guardar el fotograma actual en RAM para la iteración 'i'
+        system->copyDeviceToHost();
+        system->convertSoaToAos();
+        data.bodies[i] = system->getBodies();
+    }
+
+    // 3. UNA SOLA transferencia final masiva (D2H) para toda la historia de energías
+    d_u_vec.ToHost(data.u.data());
+    d_k_vec.ToHost(data.k.data());
+
+    // La memoria de d_u_vec y d_k_vec en VRAM se libera automáticamente aquí al salir
+    return data;
 }

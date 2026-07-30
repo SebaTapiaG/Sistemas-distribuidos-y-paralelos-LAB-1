@@ -8,7 +8,7 @@ CUDA_PATH   ?= /usr/local/cuda
 
 # Banderas para CUDA (NVCC) y C++ con OpenMP (G++)
 # Note: -I$(CUDA_PATH)/include permite a g++ encontrar <cuda_runtime.h>
-NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra # -arch=sm_89
+NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra  -arch=sm_89
 CXXFLAGS     = -Wall -Wextra -O3 -fopenmp -std=c++17 -I$(CUDA_PATH)/include
 
 LDFLAGS      = -fopenmp -L$(CUDA_PATH)/lib64 -lcudart
@@ -31,6 +31,10 @@ HEADERS     = Particle.h NBodySystem.h NBodySimulator.h MetricsCalculator.h \
 # Arreglos de objetos (.o)
 CPP_OBJS    = $(CPP_SOURCES:.cpp=.o)
 CU_OBJS     = $(CU_SOURCES:.cu=.o)
+
+# Captura todos los .cpp EXCEPTO Benchmark.cpp y Altmain.cpp
+CPP_SRCS := $(filter-out Benchmark.cpp Altmain.cpp, $(wildcard *.cpp))
+CPP_OBJS := $(CPP_SRCS:.cpp=.o)
 
 # ==============================================================================
 # REGLAS DE COMPILACIÓN PRINCIPALES
@@ -76,6 +80,14 @@ test_energy: $(CU_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o run_energy_test tests/test_kernel_energy.cu kernels/energy.cu $(CUDA_LDFLAGS)
 	./run_energy_test
 
+# ── Regla de Test GPU (Compilada y Enlazada Correctamente) ───────────────────
+test_simulation: Particle.o NBodySystem.o NBodySimulator.o
+	$(NVCC) $(NVCCFLAGS) -Xcompiler -fopenmp -o run_sim_test tests/test_gpu_simulation.cu \
+		Particle.o NBodySystem.o NBodySimulator.o \
+		kernels/accelerations.cu kernels/integration.cu kernels/energy.cu \
+		-L/usr/local/cuda/lib64 -lcudart -lgomp
+	./run_sim_test
+
 # Ejecuta tanto la suite GoogleTest como todos los tests unitarios de CUDA
 test: $(CU_OBJS)
 	# 1. Pruebas unitarias C++/OpenMP con GoogleTest
@@ -107,4 +119,4 @@ test: $(CU_OBJS)
 		./run_energy_test; \
 	fi
 
-.PHONY: clean benchmark analysis test test_basico test_integration test_energy
+.PHONY: clean benchmark analysis test test_basico test_integration test_energy test_simulation

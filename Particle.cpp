@@ -30,6 +30,14 @@ void Particle::setVy(double vy){
     this->vy = vy;
 }
 
+void Particle::setAx(double ax){
+    this->ax = ax;
+}
+
+void Particle::setAy(double ay){
+    this->ax = ay;
+}
+
 double Particle::getMass() const {
     return mass;
 }

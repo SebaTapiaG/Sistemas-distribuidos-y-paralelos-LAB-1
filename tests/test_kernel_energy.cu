@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <utility>
+#include <string>
+#include <cassert>
 #include <cuda_runtime.h>
 #include "../CudaBuffer.h"
 #include "../kernels/energy.cuh"
@@ -41,6 +43,36 @@ bool isClose(double val_gpu, double val_cpu, double rtol = 1e-4, double atol = 1
     return diff <= tolerance;
 }
 
+// ── Validación Completa e Inspección de Errores ────────────────────────────
+bool validateEnergyResult(
+    double gpu_U, double gpu_K,
+    double expected_U, double expected_K,
+    const std::string& method_name)
+{
+    // 1. Validación de estabilidad numérica (NaN e Inf)
+    if (std::isnan(gpu_U) || std::isnan(gpu_K) || std::isinf(gpu_U) || std::isinf(gpu_K)) {
+        std::cerr << "\n [FALLO CRÍTICO] NaN o Inf detectado en " << method_name << ":"
+                  << "\n  GPU -> U: " << gpu_U << " | K: " << gpu_K << std::endl;
+        return false;
+    }
+
+    // 2. Validación contra referencia/CPU
+    bool ok_u = isClose(gpu_U, expected_U);
+    bool ok_k = isClose(gpu_K, expected_K);
+
+    if (!ok_u || !ok_k) {
+        double diff_U = std::abs(gpu_U - expected_U);
+        double diff_K = std::abs(gpu_K - expected_K);
+        std::cerr << "\n [FALLO] Discrepancia en " << method_name << ":"
+                  << "\n  Esperado -> U: " << expected_U << " | K: " << expected_K
+                  << "\n  GPU      -> U: " << gpu_U << " | K: " << gpu_K
+                  << "\n  Diff Abs -> |ΔU|: " << diff_U << " | |ΔK|: " << diff_K << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
 // ── Runner Genérico de Pruebas de Energía ────────────────────────────────────
 void runEnergyTest(int N, const std::string& test_name) {
     std::cout << "\n=========================================" << std::endl;
@@ -77,26 +109,31 @@ void runEnergyTest(int N, const std::string& test_name) {
     d_vy.ToDevice(h_vy.data());
     d_mass.ToDevice(h_mass.data());
 
+    // Buffers de salida para los resultados intermedios en la GPU
+    CudaBuffer<double> d_U(1);
+    CudaBuffer<double> d_K(1);
+
     // 4. Probar ambos métodos (0: Reducción Compartida, 1: atomicAdd)
     for (int method = 0; method <= 1; ++method) {
         std::string m_name = (method == 0) ? "Reducción Compartida" : "atomicAdd Global";
         std::cout << " -> Probando Método " << m_name << "... ";
 
-        auto [gpu_U, gpu_K] = launchComputeEnergyGpu(
-            d_x, d_y, d_vx, d_vy, d_mass,
-            N, G, eps, method, 256
+        // Ejecución asíncrona en GPU con la nueva firma
+        launchComputeEnergyGpu(
+            d_x.get(), d_y.get(), d_vx.get(), d_vy.get(), d_mass.get(),
+            N, G, eps, method, 256,
+            d_U.get(), d_K.get()
         );
 
-        // Validación
-        bool ok_u = isClose(gpu_U, cpu_U);
-        bool ok_k = isClose(gpu_K, cpu_K);
+        // Descarga explícita a variables del Host solo para validación
+        double gpu_U = 0.0, gpu_K = 0.0;
+        d_U.ToHost(&gpu_U);
+        d_K.ToHost(&gpu_K);
 
-        if (ok_u && ok_k) {
+        // Validaciones avanzadas
+        if (validateEnergyResult(gpu_U, gpu_K, cpu_U, cpu_K, m_name)) {
             std::cout << "EXITOSO" << std::endl;
         } else {
-            std::cerr << "\n [FALLO] Discrepancia en " << m_name << ":"
-                      << "\n  CPU -> U: " << cpu_U << " | K: " << cpu_K
-                      << "\n  GPU -> U: " << gpu_U << " | K: " << gpu_K << std::endl;
             std::exit(EXIT_FAILURE);
         }
     }
@@ -112,6 +149,7 @@ void runAnalyticalSingleParticleTest() {
     const double G = 1.0, eps = 0.1;
 
     CudaBuffer<double> d_x(N), d_y(N), d_vx(N), d_vy(N), d_mass(N);
+    CudaBuffer<double> d_U(1), d_K(1);
 
     double h_x = 0.0, h_y = 0.0;
     double h_vx = 3.0, h_vy = 4.0; // v^2 = 25
@@ -124,15 +162,21 @@ void runAnalyticalSingleParticleTest() {
     d_mass.ToDevice(&h_mass);
 
     for (int method = 0; method <= 1; ++method) {
-        auto [gpu_U, gpu_K] = launchComputeEnergyGpu(
-            d_x, d_y, d_vx, d_vy, d_mass,
-            N, G, eps, method, 256
+        std::string m_name = (method == 0) ? "Reducción (N=1)" : "atomicAdd (N=1)";
+
+        launchComputeEnergyGpu(
+            d_x.get(), d_y.get(), d_vx.get(), d_vy.get(), d_mass.get(),
+            N, G, eps, method, 256,
+            d_U.get(), d_K.get()
         );
 
-        if (isClose(gpu_U, 0.0) && isClose(gpu_K, 25.0)) {
+        double gpu_U = 0.0, gpu_K = 0.0;
+        d_U.ToHost(&gpu_U);
+        d_K.ToHost(&gpu_K);
+
+        if (validateEnergyResult(gpu_U, gpu_K, 0.0, 25.0, m_name)) {
             std::cout << " -> Método " << method << ": EXITOSO (U = " << gpu_U << ", K = " << gpu_K << ")" << std::endl;
         } else {
-            std::cerr << " [FALLO] Resultado analítico erróneo en método " << method << std::endl;
             std::exit(EXIT_FAILURE);
         }
     }
@@ -152,10 +196,11 @@ int main() {
     }
 
     // 2. Ejecutar Casos de Prueba
-    runAnalyticalSingleParticleTest();               // Caso Analítico simple
+    runAnalyticalSingleParticleTest();               // Caso Analítico simple (N = 1)
     runEnergyTest(2, "Dos cuerpos (N = 2)");          // Par de partículas
     runEnergyTest(10, "Pequeño sistema (N = 10)");    // Múltiples hilos (1 bloque)
     runEnergyTest(500, "Gran sistema (N = 500)");     // Múltiples bloques (> 256 hilos)
+    runEnergyTest(1024, "Sistema Masivo (N = 1024)"); // Estrés de reducción multibloque
 
     std::cout << "\n=========================================" << std::endl;
     std::cout << " ¡TODAS LAS PRUEBAS DE ENERGÍA PASARON CON ÉXITO! " << std::endl;

@@ -110,23 +110,64 @@ __global__ void computeEnergyKernelAtomic(
     atomicAdd(d_K_total, local_k);
 }
 
-// ── Lanzador Host Unificado ──────────────────────────────────────────────────
-std::pair<double, double> launchComputeEnergyGpu(
+// ── Kernel Auxiliar: Consolidación final de bloques en GPU (para Método 0) ──
+__global__ void aggregateEnergyBlocksKernel(
+    const double* __restrict__ d_block_U,
+    const double* __restrict__ d_block_K,
+    int num_blocks,
+    double* __restrict__ d_u_out,
+    double* __restrict__ d_k_out)
+{
+    extern __shared__ double sdata[];
+    double* s_u = sdata;
+    double* s_k = sdata + blockDim.x;
+
+    int tid = threadIdx.x;
+    double sum_u = 0.0;
+    double sum_k = 0.0;
+
+    // Acumular múltiples bloques si num_blocks > blockDim.x
+    for (int i = tid; i < num_blocks; i += blockDim.x) {
+        sum_u += d_block_U[i];
+        sum_k += d_block_K[i];
+    }
+
+    s_u[tid] = sum_u;
+    s_k[tid] = sum_k;
+    __syncthreads();
+
+    // Reducción dentro del bloque
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            s_u[tid] += s_u[tid + s];
+            s_k[tid] += s_k[tid + s];
+        }
+        __syncthreads();
+    }
+
+    // El hilo 0 escribe el resultado final directamente en la memoria de la GPU
+    if (tid == 0) {
+        *d_u_out = s_u[0];
+        *d_k_out = s_k[0];
+    }
+}
+
+// ── Lanzador Host Unificado (100% GPU / Sin ToHost) ─────────────────────────
+void launchComputeEnergyGpu(
     const double* d_x, const double* d_y,
     const double* d_vx, const double* d_vy,
     const double* d_mass,
     int N, double G, double epsilon,
-    int method, int block_size)
+    int method, int block_size,
+    double* d_u_out, double* d_k_out)
 {
-    if (N <= 0) return {0.0, 0.0};
+    if (N <= 0) return;
 
     const double eps2 = epsilon * epsilon;
     const int grid_size = (N + block_size - 1) / block_size;
 
-    double h_U = 0.0, h_K = 0.0;
-
     if (method == 0) {
-        // ── MÉTODO 0: Reducción Paralela
+        // Reducción paralela
         CudaBuffer<double> d_block_U(grid_size);
         CudaBuffer<double> d_block_K(grid_size);
 
@@ -138,54 +179,40 @@ std::pair<double, double> launchComputeEnergyGpu(
             N, G, eps2
         );
 
-        CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaDeviceSynchronize());
-
-        // Descargar sumas parciales por bloque y consolidar en CPU
-        std::vector<double> h_block_U(grid_size), h_block_K(grid_size);
-        d_block_U.ToHost(h_block_U.data());
-        d_block_K.ToHost(h_block_K.data());
-
-        h_U = std::accumulate(h_block_U.begin(), h_block_U.end(), 0.0);
-        h_K = std::accumulate(h_block_K.begin(), h_block_K.end(), 0.0);
-
+        int reduce_threads = 256;
+        size_t reduce_shared_bytes = 2 * reduce_threads * sizeof(double);
+        
+        aggregateEnergyBlocksKernel<<<1, reduce_threads, reduce_shared_bytes>>>(
+            d_block_U.get(), d_block_K.get(),
+            grid_size, d_u_out, d_k_out
+        );
     } else {
-        // ── MÉTODO 1: atomicAdd Directo
-        CudaBuffer<double> d_U(1);
-        CudaBuffer<double> d_K(1);
-
-        double zero = 0.0;
-        d_U.ToDevice(&zero);
-        d_K.ToDevice(&zero);
+        // atomicAdd
+        cudaMemset(d_u_out, 0, sizeof(double));
+        cudaMemset(d_k_out, 0, sizeof(double));
 
         computeEnergyKernelAtomic<<<grid_size, block_size>>>(
             d_x, d_y, d_vx, d_vy, d_mass,
-            d_U.get(), d_K.get(),
+            d_u_out, d_k_out,
             N, G, eps2
         );
-
-        CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaDeviceSynchronize());
-
-        d_U.ToHost(&h_U);
-        d_K.ToHost(&h_K);
     }
-
-    return {h_U, h_K};
 }
 
-// Sobrecarga de alto nivel con CudaBuffer
-std::pair<double, double> launchComputeEnergyGpu(
+inline void launchComputeEnergyGpu(
     const CudaBuffer<double>& d_x, const CudaBuffer<double>& d_y,
     const CudaBuffer<double>& d_vx, const CudaBuffer<double>& d_vy,
     const CudaBuffer<double>& d_mass,
     int N, double G, double epsilon,
-    int method, int block_size)
+    int method, int block_size,
+    CudaBuffer<double>& d_u_out, CudaBuffer<double>& d_k_out)
 {
-    return launchComputeEnergyGpu(
+    launchComputeEnergyGpu(
         d_x.get(), d_y.get(),
         d_vx.get(), d_vy.get(),
         d_mass.get(),
-        N, G, epsilon, method, block_size
+        N, G, epsilon,
+        method, block_size,
+        d_u_out.get(), d_k_out.get()
     );
 }
