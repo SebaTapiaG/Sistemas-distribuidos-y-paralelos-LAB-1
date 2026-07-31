@@ -743,7 +743,8 @@ void Benchmark::runFullGpuTestSuite(
                 NBodySystem sys(1.0, 0.01);
                 setupRandomSystem(sys, n);
                 Benchmark bench(sys, steps, dt, runs);
-
+                //AÑADIR OPCION DE QUE SI FIXED_BLOCK_SIZE O FIXED_N ES 0, SE IGNORE EL FILTRO Y SE GUARDE TODO
+                //LO MISMO CON FIXED_N
                 // Pasamos "" para controlar el guardado explícito
                 CpuGpuComparison res = bench.runGpuComparisonTest("", n, var, blk, 0, runs);
 

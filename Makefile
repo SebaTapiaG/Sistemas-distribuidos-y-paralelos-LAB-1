@@ -19,7 +19,7 @@ CUDA_LDFLAGS = -L$(CUDA_PATH)/lib64 -lcudart
 # ==============================================================================
 TARGET      = nbody_2d_cuda
 
-CPP_SOURCES = Altmain.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp \
+CPP_SOURCES = main.cpp Particle.cpp NBodySystem.cpp NBodySimulator.cpp \
               MetricsCalculator.cpp Benchmark.cpp Visualizer.cpp
 
 CU_SOURCES  = kernels/accelerations.cu kernels/integration.cu kernels/energy.cu
@@ -31,10 +31,6 @@ HEADERS     = Particle.h NBodySystem.h NBodySimulator.h MetricsCalculator.h \
 # Arreglos de objetos (.o)
 CPP_OBJS    = $(CPP_SOURCES:.cpp=.o)
 CU_OBJS     = $(CU_SOURCES:.cu=.o)
-
-# Captura todos los .cpp EXCEPTO Benchmark.cpp y Altmain.cpp
-CPP_SRCS := $(filter-out Benchmark.cpp Altmain.cpp, $(wildcard *.cpp))
-CPP_OBJS := $(CPP_SRCS:.cpp=.o)
 
 # ==============================================================================
 # REGLAS DE COMPILACIÓN PRINCIPALES
@@ -64,6 +60,19 @@ benchmark: $(TARGET)
 
 analysis: $(TARGET)
 	./$(TARGET) -analysis
+# Corre la suite completa de benchmarks en GPU (-suite)
+suite: $(TARGET)
+	./$(TARGET) -suite
+
+# Mantiene compatibilidad al llamar 'make benchmark'
+benchmark: $(TARGET)
+	./$(TARGET) -suite
+
+# Corre una prueba única puntual (-test N variant blocksize runs)
+test_single: $(TARGET)
+	./$(TARGET) -test 1024 0 256 10
+
+#-sim para visualizer
 
 # Regla rápida para compilar y ejecutar SOLO el test de Aceleraciones
 test_basico: $(CU_OBJS)
@@ -133,4 +142,4 @@ test: $(CU_OBJS)
 		./run_energy_test; \
 	fi
 
-.PHONY: clean benchmark analysis test test_basico test_integration test_energy test_simulation
+.PHONY: clean benchmark suite test_single sim analysis test test_basico test_integration test_energy test_simulation
