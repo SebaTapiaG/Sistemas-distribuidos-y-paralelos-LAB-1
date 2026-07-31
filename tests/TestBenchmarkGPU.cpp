@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cmath>
 #include <vector>
+#include <random>
 #include "Benchmark.h"
 #include "NBodySystem.h"
 
@@ -74,7 +75,7 @@ TEST_F(BenchmarkIntegrationTest, CpuSerialBenchmarkRunsCorrectly) {
     EXPECT_GE(res.stddev_ms, 0.0);
 }
 
-// Test para la comparación completa entre CPU y GPU
+// Test para la comparación completa entre CPU y GPU (Individual)
 TEST_F(BenchmarkIntegrationTest, RunGpuComparisonTestAndExport) {
     std::string test_output_file = "test_gpu_comparison.dat";
     
@@ -83,12 +84,12 @@ TEST_F(BenchmarkIntegrationTest, RunGpuComparisonTestAndExport) {
 
     Benchmark bench(test_system, steps, dt, 3);
     
-    // Escribir cabecera
-    Benchmark::writeGpuHeader(test_output_file);
+    // Escribir cabecera usando el método unificado
+    Benchmark::writeFullResultsHeader(test_output_file);
 
-    // Ejecutar test de comparación (variante 0, block_size 128, runs 3)
+    // Ejecutar test de comparación (variante 0, block_size 128, runs 3, rtol 1e-4, atol 1e-8)
     CpuGpuComparison comp = bench.runGpuComparisonTest(
-        test_output_file, num_particles, 0, 128, 0, 3
+        test_output_file, num_particles, 0, 128, 0, 3, 1e-4, 1e-8
     );
 
     // Validar resultados de la estructura
@@ -98,6 +99,7 @@ TEST_F(BenchmarkIntegrationTest, RunGpuComparisonTestAndExport) {
     EXPECT_GT(comp.gpu_end_to_end.mean_ms, 0.0);
     EXPECT_GT(comp.speedup_kernel, 0.0);
     EXPECT_GT(comp.speedup_e2e, 0.0);
+    EXPECT_TRUE(comp.accuracy_pass);
 
     // Comprobar que el archivo se creó correctamente y tiene contenido
     std::ifstream file(test_output_file);

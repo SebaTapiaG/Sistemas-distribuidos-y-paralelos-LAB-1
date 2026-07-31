@@ -7,7 +7,6 @@
 #include <iostream>
 #include <omp.h>
 #include "NBodySimulator.h" // Para acceder a simulation_data
-//verifica
 struct DiagnosticResult {
     double energy;
     int last_index;
@@ -34,6 +33,13 @@ struct CenterOfMass {
     double y;
     double total_mass;
 };
+// Estructura para reportar el resultado de la comparación de tolerancias
+struct AccuracyResult {
+    bool passed;
+    double max_rel_error_pos;
+    double max_rel_error_acc;
+    int failed_components;
+};
 
 class MetricsCalculator {
     public:
@@ -45,6 +51,15 @@ class MetricsCalculator {
         static DiagnosticResult verifyConsistency(const std::vector<Particle>& bodies);
         static MomentumResult calculateMomentum(const std::vector<Particle>& bodies);
         static CenterOfMass calculateCenterOfMass(const std::vector<Particle>& bodies);
+        static AccuracyResult compareCpuGpuAccuracy(
+        const std::vector<Particle>& cpu_bodies,
+        const std::vector<Particle>& gpu_bodies,
+        const std::vector<double>& gpu_ax,
+        const std::vector<double>& gpu_ay,
+        const std::vector<double>& cpu_ax,
+        const std::vector<double>& cpu_ay,
+        double rtol = 1e-4, 
+        double atol = 1e-8);
 };
 
 

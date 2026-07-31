@@ -25,20 +25,25 @@ struct MeasurementResult {
     double stddev_ms;    // sigma_T (desviación estándar en ms)
 };
 
+// ── Modificación en CpuGpuComparison ──────────────────────────────────────────
 struct CpuGpuComparison {
     int num_particles;
     int variant;
     int block_size;
     
-    MeasurementResult cpu_serial;      // Baseline CPU Serial
-    MeasurementResult gpu_kernel;      // GPU Kernel Only
-    MeasurementResult gpu_end_to_end;  // GPU End-to-End
+    MeasurementResult cpu_serial;      
+    MeasurementResult gpu_kernel;      
+    MeasurementResult gpu_end_to_end;  
     
-    double speedup_kernel;  // T_cpu / T_gpu_kernel
-    double speedup_e2e;     // T_cpu / T_gpu_e2e
-    double amdahl_f;        // Fracción serial estimada (Amdahl)
-};
+    double speedup_kernel;  
+    double speedup_e2e;     
+    double amdahl_f;        
 
+    // NUEVO: Validación de tolerancia física y matemática
+    bool accuracy_pass;
+    double max_rel_err_pos;
+    double max_rel_err_acc;
+};
 class Benchmark {
 private:
     NBodySystem base_system;
@@ -114,21 +119,38 @@ public:
         int block_size = 256, 
         int runs = 10
     );
-    // Métodos para exportar y formatear resultados GPU
-    static void writeGpuHeader(const std::string& filename);
-    static void saveGpuComparison(const std::string& filename, const CpuGpuComparison& res);
+    // Método para ejecutar la suite completa de 40 pruebas CPU vs GPU (Kernel y E2E)
+    void runFullGpuTestSuite(const std::string& outputFile, int runs = 5);
+    // ── NUEVOS MÉTODOS DE FORMATO Y ESCRITURA DIFERENCIADA PARA CADA ARCHIVO ──
+    static void writeFullResultsHeader(const std::string& filename);
+    static void saveFullResultRow(const std::string& filename, const CpuGpuComparison& res);
 
-    // Orquestador Principal que ejecuta y guarda la comparación
+    static void writeScalingHeader(const std::string& filename);
+    static void saveScalingRow(const std::string& filename, const CpuGpuComparison& res);
+
+    static void writeBlockDimHeader(const std::string& filename);
+    static void saveBlockDimRow(const std::string& filename, const CpuGpuComparison& res);
+
+    // ── NUEVA FIRMA CON PARÁMETROS DE TOLERANCIA ─────────────────────────────
     CpuGpuComparison runGpuComparisonTest(
         const std::string& outputFile,
         int num_particles,
         int variant = 0,
         int block_size = 256,
         int energy_method = 0,
-        int runs = 10
+        int runs = 10,
+        double rtol = 1e-4,
+        double atol = 1e-8
     );
-    // Método para ejecutar la suite completa de 40 pruebas CPU vs GPU (Kernel y E2E)
-    void runFullGpuTestSuite(const std::string& outputFile, int runs = 5);
-    };
 
+    // ── NUEVO ORQUESTADOR DE UN SOLO PASE ────────────────────────────────────
+    void runFullGpuTestSuite(
+        const std::string& fullResultsFile = "benchmark_results.dat",
+        const std::string& scalingFile = "scaling_analysis.dat",
+        const std::string& blockDimFile = "blockdim_study.dat",
+        int fixed_block_size = 256,
+        int fixed_n = 1024,
+        int runs = 5
+    );
+};
 #endif

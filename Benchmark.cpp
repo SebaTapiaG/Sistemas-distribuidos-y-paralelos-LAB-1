@@ -450,13 +450,12 @@ MeasurementResult Benchmark::benchmarkEndToEnd(
 
     for (int r = 0; r < runs; ++r) {
         NBodySystem system = base_system;
-
+        NBodySimulator sim_local(&system, dt);
         // INICIO: Medición completa (Instanciación H2D + Cómputo + D2H)
         auto start = std::chrono::high_resolution_clock::now();
         
-        NBodySimulator sim_local(&system, dt);
         sim_local.processBodiesGpu(steps, variant, energy_method, block_size, false);
-
+        CUDA_CHECK(cudaDeviceSynchronize());
         auto end = std::chrono::high_resolution_clock::now();
         double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
         times_ms.push_back(elapsed_ms);
@@ -464,61 +463,156 @@ MeasurementResult Benchmark::benchmarkEndToEnd(
 
     return calculateStats(times_ms);
 }
-void Benchmark::writeGpuHeader(const std::string& filename) {
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. MÉTODOS DE ESCRITURA DIFERENCIADA
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A. ARCHIVO MAESTRO: benchmark_results.dat
+void Benchmark::writeFullResultsHeader(const std::string& filename) {
+    std::ofstream file(filename, std::ios::trunc);
+    if (!file.is_open()) return;
+
+    file << std::left 
+         << std::setw(8)  << "N"
+         << std::setw(8)  << "Variant"
+         << std::setw(10) << "BlockSize"
+         << std::setw(16) << "CpuSerial_ms"
+         << std::setw(16) << "CpuStdDev_ms"
+         << std::setw(16) << "GpuKernel_ms"
+         << std::setw(16) << "KernelStdDev_ms"
+         << std::setw(16) << "GpuE2E_ms"
+         << std::setw(16) << "E2EStdDev_ms"
+         << std::setw(16) << "SpeedupKernel"
+         << std::setw(16) << "SpeedupE2E"
+         << std::setw(16) << "Amdahl_f"
+         << std::setw(10) << "Accuracy"
+         << std::endl;
+}
+
+void Benchmark::saveFullResultRow(const std::string& filename, const CpuGpuComparison& res) {
     std::ofstream file(filename, std::ios::app);
     if (!file.is_open()) return;
 
-    const int W_N = 10;
-    const int W_VAR = 8;
-    const int W_BLK = 10;
-    const int W_D = 16;
-
     file << std::left 
-         << std::setw(W_N)   << "N"
-         << std::setw(W_VAR) << "Variant"
-         << std::setw(W_BLK) << "BlockSize"
-         << std::setw(W_D)   << "CpuSerial_ms"
-         << std::setw(W_D)   << "CpuStdDev_ms"
-         << std::setw(W_D)   << "GpuKernel_ms"
-         << std::setw(W_D)   << "KernelStdDev_ms"
-         << std::setw(W_D)   << "GpuE2E_ms"
-         << std::setw(W_D)   << "E2EStdDev_ms"
-         << std::setw(W_D)   << "SpeedupKernel"
-         << std::setw(W_D)   << "SpeedupE2E"
-         << std::setw(W_D)   << "Amdahl_f" 
+         << std::setw(8)  << res.num_particles
+         << std::setw(8)  << res.variant
+         << std::setw(10) << res.block_size
+         << std::fixed    << std::setprecision(6)
+         << std::setw(16) << res.cpu_serial.mean_ms
+         << std::setw(16) << res.cpu_serial.stddev_ms
+         << std::setw(16) << res.gpu_kernel.mean_ms
+         << std::setw(16) << res.gpu_kernel.stddev_ms
+         << std::setw(16) << res.gpu_end_to_end.mean_ms
+         << std::setw(16) << res.gpu_end_to_end.stddev_ms
+         << std::setw(16) << res.speedup_kernel
+         << std::setw(16) << res.speedup_e2e
+         << std::setw(16) << res.amdahl_f
+         << std::setw(10) << (res.accuracy_pass ? "PASS" : "FAIL")
          << std::endl;
-    file.close();
 }
 
-void Benchmark::saveGpuComparison(const std::string& filename, const CpuGpuComparison& res) {
+// B. ESTUDIO DE ESCALABILIDAD: scaling_analysis.dat (incluye Overhead explícito)
+void Benchmark::writeScalingHeader(const std::string& filename) {
+    std::ofstream file(filename, std::ios::trunc);
+    if (!file.is_open()) return;
+
+    file << std::left 
+         << std::setw(8)  << "N"
+         << std::setw(8)  << "Variant"
+         << std::setw(10) << "BlockSize"
+         << std::setw(16) << "CpuTime_ms"
+         << std::setw(16) << "GpuKernel_ms"
+         << std::setw(16) << "GpuE2E_ms"
+         << std::setw(16) << "Overhead_ms"
+         << std::setw(16) << "Serial_frac_E2E"
+         << std::setw(16) << "SpeedupKernel"
+        << std::setw(16) << "TheoLimit_Kernel"
+         << std::setw(16) << "SpeedupE2E"
+         << std::setw(16) << "TheoLimit_E2E"
+         << std::endl;
+}
+
+void Benchmark::saveScalingRow(const std::string& filename, const CpuGpuComparison& res) {
     std::ofstream file(filename, std::ios::app);
     if (!file.is_open()) return;
 
-    const int W_N = 10;
-    const int W_VAR = 8;
-    const int W_BLK = 10;
-    const int W_D = 16;
+    double cpu_ms    = res.cpu_serial.mean_ms;
+    double kernel_ms = res.gpu_kernel.mean_ms;
+    double e2e_ms    = std::max(res.gpu_end_to_end.mean_ms, kernel_ms);
+    double overhead_ms = e2e_ms - kernel_ms;
+
+    // 1. Fracción serial del sistema End-to-End (respecto a la CPU)
+    double f_serial_e2e = (cpu_ms > 0.0) ? (overhead_ms / cpu_ms) : 0.0;
+
+    // 2. Speedups y Límites Teóricos
+    double sp_kernel = (kernel_ms > 0.0) ? (cpu_ms / kernel_ms) : 1.0;
+    double sp_e2e    = (e2e_ms > 0.0) ? (cpu_ms / e2e_ms) : 1.0;
+
+    double theo_limit_kernel = sp_kernel; // Techo puro del Kernel
+    double theo_limit_e2e    = (f_serial_e2e > 0.0) 
+        ? (1.0 / (f_serial_e2e + ((1.0 - f_serial_e2e) / sp_kernel))) 
+        : sp_kernel;
 
     file << std::left 
-         << std::setw(W_N)   << res.num_particles
-         << std::setw(W_VAR) << res.variant
-         << std::setw(W_BLK) << res.block_size
-         << std::fixed       << std::setprecision(6)
-         << std::setw(W_D)   << res.cpu_serial.mean_ms
-         << std::setw(W_D)   << res.cpu_serial.stddev_ms
-         << std::setw(W_D)   << res.gpu_kernel.mean_ms
-         << std::setw(W_D)   << res.gpu_kernel.stddev_ms
-         << std::setw(W_D)   << res.gpu_end_to_end.mean_ms
-         << std::setw(W_D)   << res.gpu_end_to_end.stddev_ms
-         << std::setw(W_D)   << res.speedup_kernel
-         << std::setw(W_D)   << res.speedup_e2e
-         << std::setw(W_D)   << res.amdahl_f 
+         << std::setw(8)  << res.num_particles
+         << std::setw(8)  << res.variant
+         << std::setw(10) << res.block_size
+         << std::fixed    << std::setprecision(6)
+         << std::setw(16) << cpu_ms
+         << std::setw(16) << kernel_ms
+         << std::setw(16) << e2e_ms
+         << std::setw(16) << overhead_ms
+         << std::setw(16) << f_serial_e2e       // <-- FRACCIÓN SERIAL AGREGADA
+         << std::setw(16) << sp_kernel
+         << std::setw(16) << theo_limit_kernel
+         << std::setw(16) << sp_e2e
+         << std::setw(16) << theo_limit_e2e
          << std::endl;
-         
-    file.flush();
-    file.close();
 }
-// ── Orquestador Principal para Evaluación CPU vs GPU ────────────────────────
+// C. DIMENSIÓN DE BLOQUE: blockdim_study.dat
+// C. DIMENSIÓN DE BLOQUE: blockdim_study.dat (VERSIÓN ACTUALIZADA Y COMPLETA)
+void Benchmark::writeBlockDimHeader(const std::string& filename) {
+    std::ofstream file(filename, std::ios::trunc);
+    if (!file.is_open()) return;
+
+    file << std::left 
+         << std::setw(10) << "BlockSize"
+         << std::setw(8)  << "Variant"
+         << std::setw(8)  << "N"
+         << std::setw(16) << "GpuKernel_ms"
+         << std::setw(16) << "KernelStdDev"
+         << std::setw(16) << "GpuE2E_ms"
+         << std::setw(16) << "E2EStdDev"
+         << std::setw(16) << "SpeedupKernel"
+         << std::setw(16) << "SpeedupE2E"
+         << std::setw(16) << "Amdahl_f"
+         << std::setw(10) << "Accuracy"
+         << std::endl;
+}
+
+void Benchmark::saveBlockDimRow(const std::string& filename, const CpuGpuComparison& res) {
+    std::ofstream file(filename, std::ios::app);
+    if (!file.is_open()) return;
+
+    file << std::left 
+         << std::setw(10) << res.block_size
+         << std::setw(8)  << res.variant
+         << std::setw(8)  << res.num_particles
+         << std::fixed    << std::setprecision(6)
+         << std::setw(16) << res.gpu_kernel.mean_ms
+         << std::setw(16) << res.gpu_kernel.stddev_ms
+         << std::setw(16) << res.gpu_end_to_end.mean_ms
+         << std::setw(16) << res.gpu_end_to_end.stddev_ms
+         << std::setw(16) << res.speedup_kernel
+         << std::setw(16) << res.speedup_e2e         
+         << std::setw(16) << res.amdahl_f             
+         << std::setw(10) << (res.accuracy_pass ? "PASS" : "FAIL") 
+         << std::endl;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. ORQUESTADOR DE COMPARACIÓN CPU vs GPU (Con Tolerancia Integrada)
+// ─────────────────────────────────────────────────────────────────────────────
 
 CpuGpuComparison Benchmark::runGpuComparisonTest(
     const std::string& outputFile,
@@ -526,17 +620,55 @@ CpuGpuComparison Benchmark::runGpuComparisonTest(
     int variant,
     int block_size,
     int energy_method,
-    int runs) 
+    int runs,
+    double rtol,
+    double atol) 
 {
     CpuGpuComparison result;
     result.num_particles = num_particles;
     result.variant = variant;
     result.block_size = block_size;
 
-    // 1. Cómputo Baseline CPU Serial
+    // A. VERIFICACIÓN DE TOLERANCIA FÍSICA Y MATEMÁTICA
+    NBodySystem sys_check_cpu = base_system;
+    NBodySystem sys_check_gpu = base_system;
+
+    NBodySimulator sim_check_cpu(&sys_check_cpu, dt);
+    NBodySimulator sim_check_gpu(&sys_check_gpu, dt);
+
+    // 1 paso en CPU y 1 paso en GPU con descarga de datos (record_frames = true)
+    sim_check_cpu.processBodies(1);
+    sim_check_gpu.processBodiesGpu(1, variant, energy_method, block_size, true);
+
+    const auto& cpu_bodies = sys_check_cpu.getBodies(); // getBodies() en lugar de getParticles()
+    const auto& gpu_bodies = sys_check_gpu.getBodies();
+
+    // Extraer aceleraciones reales de las partículas
+    std::vector<double> cpu_ax, cpu_ay, gpu_ax, gpu_ay;
+    cpu_ax.reserve(num_particles); cpu_ay.reserve(num_particles);
+    gpu_ax.reserve(num_particles); gpu_ay.reserve(num_particles);
+
+    for (int i = 0; i < num_particles; ++i) {
+        cpu_ax.push_back(cpu_bodies[i].getAx());
+        cpu_ay.push_back(cpu_bodies[i].getAy());
+
+        gpu_ax.push_back(gpu_bodies[i].getAx());
+        gpu_ay.push_back(gpu_bodies[i].getAy());
+    }
+
+    AccuracyResult accuracy = MetricsCalculator::compareCpuGpuAccuracy(
+        cpu_bodies, gpu_bodies,
+        gpu_ax, gpu_ay, cpu_ax, cpu_ay,
+        rtol, atol
+    );
+
+    result.accuracy_pass = accuracy.passed;
+    result.max_rel_err_pos = accuracy.max_rel_error_pos;
+    result.max_rel_err_acc = accuracy.max_rel_error_acc;
+
+    // B. BENCHMARKS TEMPORALES
     result.cpu_serial = benchmarkCpuSerial(runs);
 
-    // 2. Cómputo GPU Kernel-Only
     NBodySystem sys_kernel = base_system;
     NBodySimulator sim_kernel(&sys_kernel, dt);
 
@@ -554,10 +686,9 @@ CpuGpuComparison Benchmark::runGpuComparisonTest(
     if (d_u_ptr) CUDA_CHECK(cudaFree(d_u_ptr));
     if (d_k_ptr) CUDA_CHECK(cudaFree(d_k_ptr));
 
-    // 3. Cómputo GPU End-to-End
     result.gpu_end_to_end = benchmarkEndToEnd(variant, energy_method, block_size, runs);
 
-    // 4. Métricas Derivadas (Speedups & Amdahl)
+    // C. MÉTRICAS DERIVADAS
     result.speedup_kernel = (result.gpu_kernel.mean_ms > 0.0) 
         ? (result.cpu_serial.mean_ms / result.gpu_kernel.mean_ms) : 0.0;
 
@@ -566,38 +697,71 @@ CpuGpuComparison Benchmark::runGpuComparisonTest(
 
     result.amdahl_f = (result.speedup_kernel > 0.0) ? (1.0 / result.speedup_kernel) : 1.0;
 
-    // 5. Guardado automático delegando en el método auxiliar
     if (!outputFile.empty()) {
-        saveGpuComparison(outputFile, result);
+        saveFullResultRow(outputFile, result);
     }
 
     return result;
 }
-void Benchmark::runFullGpuTestSuite(const std::string& outputFile, int runs) {
-    std::vector<int> particle_counts = {128, 256, 512, 1024, 2000}; // 5 valores
-    std::vector<int> variants = {0, 1};                             // 2 valores
-    std::vector<int> block_sizes = {64, 128, 256, 512, 1024};              // 5 valores
 
-    // Escribimos la cabecera en el archivo de salida
-    writeGpuHeader(outputFile);
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. SUITE COMPLETA EN UN SOLO PASE (SINGLE PASS)
+// ─────────────────────────────────────────────────────────────────────────────
 
+void Benchmark::runFullGpuTestSuite(
+    const std::string& fullResultsFile,
+    const std::string& scalingFile,
+    const std::string& blockDimFile,
+    int fixed_block_size,
+    int fixed_n,
+    int runs) 
+{
+    std::vector<int> particle_counts = {128, 256, 512, 1024, 2000}; 
+    std::vector<int> variants = {0, 1};                            
+    std::vector<int> block_sizes = {64, 128, 256, 512, 1024};             
+
+    // 1. Inicializamos encabezados personalizados
+    writeFullResultsHeader(fullResultsFile);
+    writeScalingHeader(scalingFile);
+    writeBlockDimHeader(blockDimFile);
+
+    int total_tests = particle_counts.size() * variants.size() * block_sizes.size();
     int test_count = 0;
+
+    std::cout << "\n======================================================\n";
+    std::cout << "INICIANDO BENCHMARK GPU (SINGLE PASS - " << total_tests << " PRUEBAS)\n";
+    std::cout << "======================================================\n";
+
+    // 2. Un único producto cartesiano
     for (int n : particle_counts) {
         for (int var : variants) {
             for (int blk : block_sizes) {
                 test_count++;
-                std::cout << "[Suite GPU " << test_count << "/50] Running N=" << n 
-                          << ", Variant=" << var << ", BlockSize=" << blk << "..." << std::endl;
+                std::cout << "[" << test_count << "/" << total_tests << "] N=" << n 
+                          << ", Var=" << var << ", Blk=" << blk << "..." << std::endl;
 
-                // Re-inicializamos el sistema base para mantener consistencia
                 NBodySystem sys(1.0, 0.01);
                 setupRandomSystem(sys, n);
-                
                 Benchmark bench(sys, steps, dt, runs);
-                
-                // Corre y guarda automáticamente las mediciones Kernel y End-to-End
-                bench.runGpuComparisonTest(outputFile, n, var, blk, 0, runs);
+
+                // Pasamos "" para controlar el guardado explícito
+                CpuGpuComparison res = bench.runGpuComparisonTest("", n, var, blk, 0, runs);
+
+                // A. Archivo Maestro siempre recibe la fila completa
+                saveFullResultRow(fullResultsFile, res);
+
+                // B. Filtro para scaling_analysis.dat
+                if (blk == fixed_block_size) {
+                    saveScalingRow(scalingFile, res);
+                }
+
+                // C. Filtro para blockdim_study.dat
+                if (n == fixed_n) {
+                    saveBlockDimRow(blockDimFile, res);
+                }
             }
         }
     }
+
+    std::cout << "\n[OK] Suite finalizada con éxito. Se generaron los 3 archivos en 1 solo pase.\n\n";
 }

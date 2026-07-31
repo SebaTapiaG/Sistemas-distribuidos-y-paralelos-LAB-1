@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <cmath>
+#include <random>
 #include "MetricsCalculator.h"
 
 /**
@@ -86,4 +87,59 @@ TEST(MetricsCalculatorTest, PhysicalAnalysis) {
 
     EXPECT_DOUBLE_EQ(result.relative_error, 0.0);
     EXPECT_TRUE(result.is_valid);
+}
+TEST(MetricsCalculatorTest, CpuGpuToleranceValidation) {
+    const int N = 100;
+    const double dt = 0.01;
+    
+    // 1. Inicializar sistema CPU con datos aleatorios
+    NBodySystem system_cpu(1.0, 0.01);
+    std::mt19937 gen(42);
+    std::uniform_real_distribution<> pos_dis(0.0, 100.0);
+    std::uniform_real_distribution<> mass_dis(1.0, 10.0);
+
+    for (int i = 0; i < N; ++i) {
+        system_cpu.addParticle(Particle(mass_dis(gen), pos_dis(gen), pos_dis(gen)));
+    }
+
+    // 2. Duplicar sistema exacto para la GPU
+    NBodySystem system_gpu = system_cpu;
+
+    // 3. Ejecutar 1 paso de aceleraciones/integración en CPU
+    NBodySimulator sim_cpu(&system_cpu, dt);
+    sim_cpu.processBodies(1);
+
+    // 4. Ejecutar 1 paso en GPU (fuerza la descarga de estado con record_frames=true o copyDeviceToHost)
+    NBodySimulator sim_gpu(&system_gpu, dt);
+    sim_gpu.processBodiesGpu(1, 0, 0, 128, true); // record_frames=true descarga posiciones/aceleraciones SoA -> AoS
+
+    // 5. Obtener partículas
+    const auto& cpu_particles = system_cpu.getBodies();
+    const auto& gpu_particles = system_gpu.getBodies();
+
+    // 6. Construir los vectores de aceleración reales calculados en este paso
+    std::vector<double> cpu_ax, cpu_ay, gpu_ax, gpu_ay;
+    cpu_ax.reserve(N); cpu_ay.reserve(N);
+    gpu_ax.reserve(N); gpu_ay.reserve(N);
+
+    for (int i = 0; i < N; ++i) {
+        cpu_ax.push_back(cpu_particles[i].getAx());
+        cpu_ay.push_back(cpu_particles[i].getAy());
+
+        gpu_ax.push_back(gpu_particles[i].getAx());
+        gpu_ay.push_back(gpu_particles[i].getAy());
+    }
+
+    // 7. Validar precisión con métricas usando aceleraciones REALES
+    AccuracyResult acc = MetricsCalculator::compareCpuGpuAccuracy(
+        cpu_particles, gpu_particles, 
+        cpu_ax, cpu_ay, gpu_ax, gpu_ay, 
+        1e-4, 1e-8
+    );
+
+    // Evaluación del test
+    EXPECT_TRUE(acc.passed) 
+        << "Divergencia detectada entre CPU y GPU en iteración 1.\n"
+        << "  Max Error Relativo Posición: " << acc.max_rel_error_pos << "\n"
+        << "  Max Error Relativo Aceleración: " << acc.max_rel_error_acc;
 }

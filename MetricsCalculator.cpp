@@ -104,3 +104,48 @@ DiagnosticResult MetricsCalculator::verifyConsistency(const std::vector<Particle
     
     return res;
 }
+AccuracyResult MetricsCalculator::compareCpuGpuAccuracy(
+    const std::vector<Particle>& cpu_bodies,
+    const std::vector<Particle>& gpu_bodies,
+    const std::vector<double>& gpu_ax,
+    const std::vector<double>& gpu_ay,
+    const std::vector<double>& cpu_ax,
+    const std::vector<double>& cpu_ay,
+    double rtol, 
+    double atol) 
+{
+    AccuracyResult res{true, 0.0, 0.0, 0};
+    size_t n = cpu_bodies.size();
+
+    if (gpu_bodies.size() != n || cpu_ax.size() != n || gpu_ax.size() != n) {
+        res.passed = false;
+        return res;
+    }
+
+    auto check_tolerance = [rtol, atol](double val_gpu, double val_cpu, double& max_rel_err) {
+        double diff = std::abs(val_gpu - val_cpu);
+        double max_allowed = atol + rtol * std::abs(val_cpu);
+        
+        double rel_err = (std::abs(val_cpu) > 1e-12) ? (diff / std::abs(val_cpu)) : diff;
+        if (rel_err > max_rel_err) max_rel_err = rel_err;
+
+        return diff <= max_allowed;
+    };
+
+    for (size_t i = 0; i < n; ++i) {
+        // 1. Validar Posiciones (X, Y)
+        bool px = check_tolerance(gpu_bodies[i].getX(), cpu_bodies[i].getX(), res.max_rel_error_pos);
+        bool py = check_tolerance(gpu_bodies[i].getY(), cpu_bodies[i].getY(), res.max_rel_error_pos);
+
+        // 2. Validar Aceleraciones (AX, AY)
+        bool ax = check_tolerance(gpu_ax[i], cpu_ax[i], res.max_rel_error_acc);
+        bool ay = check_tolerance(gpu_ay[i], cpu_ay[i], res.max_rel_error_acc);
+
+        if (!px || !py || !ax || !ay) {
+            res.passed = false;
+            res.failed_components++;
+        }
+    }
+
+    return res;
+}
