@@ -77,6 +77,12 @@ TEST_F(BenchmarkIntegrationTest, CpuSerialBenchmarkRunsCorrectly) {
 
 // Test para la comparación completa entre CPU y GPU (Individual)
 TEST_F(BenchmarkIntegrationTest, RunGpuComparisonTestAndExport) {
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+
+    if (err != cudaSuccess || deviceCount == 0) {
+        GTEST_SKIP() << "Saltando test de comparación GPU: No hay GPU o driver NVIDIA presente.";
+    }
     std::string test_output_file = "test_gpu_comparison.dat";
     
     // Eliminar archivo si ya existía antes de la prueba

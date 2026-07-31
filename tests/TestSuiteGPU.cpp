@@ -4,6 +4,12 @@
 #include "Benchmark.h"
 
 TEST(BenchmarkGpuSuiteTest, SinglePassFullGpuTestSuite) {
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+
+    if (err != cudaSuccess || deviceCount == 0) {
+        GTEST_SKIP() << "Saltando test de comparación GPU: No hay GPU o driver NVIDIA presente.";
+    }
     std::string full_file = "test_gpu_suite_full.dat";
     std::string scaling_file = "test_gpu_suite_scaling.dat";
     std::string blockdim_file = "test_gpu_suite_blockdim.dat";

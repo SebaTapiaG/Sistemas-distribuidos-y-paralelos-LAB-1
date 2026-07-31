@@ -89,6 +89,13 @@ TEST(MetricsCalculatorTest, PhysicalAnalysis) {
     EXPECT_TRUE(result.is_valid);
 }
 TEST(MetricsCalculatorTest, CpuGpuToleranceValidation) {
+    // Verificar si hay un dispositivo CUDA disponible
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+
+    if (err != cudaSuccess || deviceCount == 0) {
+        GTEST_SKIP() << "Saltando test: No hay hardware o driver CUDA disponible en este entorno.";
+    }
     const int N = 100;
     const double dt = 0.01;
     
