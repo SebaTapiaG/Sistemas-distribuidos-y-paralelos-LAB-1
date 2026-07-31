@@ -2,6 +2,9 @@
 
 #include "Particle.h"
 #include <vector>
+#include <memory>
+#include "CudaBuffer.h"
+#include "kernels/accelerations.cuh"
 
 /**
  * NBodySystem
@@ -21,6 +24,21 @@ class NBodySystem {
         std::vector<Particle> bodies;   // Conjunto de partículas del sistema
         double G_const;                 // Constante gravitacional (e.g. G = 1.0)
         double softening_eps;           // Suavizado de Plummer epsilon (evita singularidades)
+
+        // Modificaciones para CUDA: almacenamiento SoA para variables fisicas para su transferencia a GPU
+        // Contenedores SoA en Host (CPU)
+        std::vector<double> h_x, h_y, h_vx, h_vy, h_mass, h_ax, h_ay;
+
+        // Buffers SoA en Device (GPU) envueltos en CudaBuffer
+        std::unique_ptr<CudaBuffer<double>> d_x;
+        std::unique_ptr<CudaBuffer<double>> d_y;
+        std::unique_ptr<CudaBuffer<double>> d_vx;
+        std::unique_ptr<CudaBuffer<double>> d_vy;
+        std::unique_ptr<CudaBuffer<double>> d_mass;
+        std::unique_ptr<CudaBuffer<double>> d_ax;
+        std::unique_ptr<CudaBuffer<double>> d_ay;
+
+        bool gpu_allocated = false;
 
     public:
         /**
@@ -91,4 +109,31 @@ class NBodySystem {
 
         /** Cambia el suavizado de Plummer del sistema. */
         void setEpsilon(double newEps);
+
+        // --- CONSTRUCTOR Y OPERADOR DE COPIA (Necesarios para Benchmark) ---
+        NBodySystem(const NBodySystem& other);
+        NBodySystem& operator=(const NBodySystem& other);
+
+
+        // ── Métodos de Gestión SoA y GPU (Nuevos) ───────────────
+        void convertAosToSoa(); // Llena h_x, h_y, etc., a partir de 'bodies'
+        void convertSoaToAos(); // Actualiza 'bodies' a partir de h_x, h_y, h_ax, etc.
+        
+        void allocateGpuMemory(); // Reserva memoria en GPU vía CudaBuffer
+        void copyHostToDevice();  // Sube SoA desde CPU -> GPU
+        void copyDeviceToHost();  // Descarga SoA desde GPU -> CPU
+
+        // ── Sobrecargas obligatorias para CUDA ─────────────────────────────────────
+        void computeAccelerationsGpu();
+        void computeAccelerationsGpu(int variant);
+        void computeAccelerationsGpu(int variant, int block_size);
+
+        // Getters para acceder a los punteros raw de la GPU si se requieren fuera
+        double* getGpuX() const { return d_x ? d_x->get() : nullptr; }
+        double* getGpuY() const { return d_y ? d_y->get() : nullptr; }
+        double* getGpuVx() const { return d_vx ? d_vx->get() : nullptr; }
+        double* getGpuVy() const { return d_vy ? d_vy->get() : nullptr; }
+        double* getGpuMass() const { return d_mass ? d_mass->get() : nullptr; }
+        double* getGpuAx() const { return d_ax ? d_ax->get() : nullptr; }
+        double* getGpuAy() const { return d_ay ? d_ay->get() : nullptr; }
 };

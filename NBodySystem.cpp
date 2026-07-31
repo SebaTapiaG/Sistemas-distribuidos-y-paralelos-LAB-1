@@ -178,3 +178,160 @@ void NBodySystem::setG(double newG) {
 void NBodySystem::setEpsilon(double newEps) {
     softening_eps = newEps;
 }
+
+//Métodos de Gestión SoA y GPU (Nuevos) ───────────────────────────────
+// ── Convierte vector<Particle> (AoS) a Vectores Contiguos SoA (Host) ─────────
+void NBodySystem::convertAosToSoa() {
+    size_t N = bodies.size();
+    h_x.resize(N);
+    h_y.resize(N);
+    h_vx.resize(N);
+    h_vy.resize(N);
+    h_mass.resize(N);
+    h_ax.resize(N);
+    h_ay.resize(N);
+
+    for (size_t i = 0; i < N; ++i) {
+        h_x[i]    = bodies[i].getX();
+        h_y[i]    = bodies[i].getY();
+        h_vx[i]   = bodies[i].getVx();
+        h_vy[i]   = bodies[i].getVy();
+        h_mass[i] = bodies[i].getMass();
+        h_ax[i]   = bodies[i].getAx();
+        h_ay[i]   = bodies[i].getAy();
+    }
+}
+
+// ── Convierte SoA (Host) de vuelta a vector<Particle> (AoS) ──────────────────
+void NBodySystem::convertSoaToAos() {
+    size_t N = bodies.size();
+    for (size_t i = 0; i < N; ++i) {
+        bodies[i].setX(h_x[i]);
+        bodies[i].setY(h_y[i]);
+        bodies[i].setVx(h_vx[i]);
+        bodies[i].setVy(h_vy[i]);
+        bodies[i].setAx(h_ax[i]);
+        bodies[i].setAy(h_ay[i]);
+    }
+}
+
+// ── Reserva Memoria GPU mediante CudaBuffer ─────────────────────────────────
+void NBodySystem::allocateGpuMemory() {
+    size_t N = bodies.size();
+    if (N == 0) return;
+
+    d_x    = std::make_unique<CudaBuffer<double>>(N);
+    d_y    = std::make_unique<CudaBuffer<double>>(N);
+    d_vx   = std::make_unique<CudaBuffer<double>>(N);
+    d_vy   = std::make_unique<CudaBuffer<double>>(N);
+    d_mass = std::make_unique<CudaBuffer<double>>(N);
+    d_ax   = std::make_unique<CudaBuffer<double>>(N);
+    d_ay   = std::make_unique<CudaBuffer<double>>(N);
+
+    gpu_allocated = true;
+}
+
+// ── Transfiere datos Host -> Device ─────────────────────────────────────────
+void NBodySystem::copyHostToDevice() {
+    if (!gpu_allocated) allocateGpuMemory();
+
+    d_x->ToDevice(h_x.data());
+    d_y->ToDevice(h_y.data());
+    d_vx->ToDevice(h_vx.data());
+    d_vy->ToDevice(h_vy.data());
+    d_mass->ToDevice(h_mass.data());
+    d_ax->ToDevice(h_ax.data());
+    d_ay->ToDevice(h_ay.data());
+}
+
+// ── Transfiere datos Device -> Host ─────────────────────────────────────────
+void NBodySystem::copyDeviceToHost() {
+    if (!gpu_allocated) return;
+
+    d_x->ToHost(h_x.data());
+    d_y->ToHost(h_y.data());
+    d_vx->ToHost(h_vx.data());
+    d_vy->ToHost(h_vy.data());
+    d_ax->ToHost(h_ax.data());
+    d_ay->ToHost(h_ay.data());
+}
+// ── Métodos de Cálculo de Aceleraciones en GPU ───────────────────────────────
+// Versión 1: Llama a la versión de variant con el valor por defecto 0
+void NBodySystem::computeAccelerationsGpu() {
+    computeAccelerationsGpu(0, 256);
+}
+
+// Versión 2: Llama a la versión completa con block_size por defecto 256
+void NBodySystem::computeAccelerationsGpu(int variant) {
+    computeAccelerationsGpu(variant, 256);
+}
+
+// Versión 3: Firma completa que orquesta la ejecución
+void NBodySystem::computeAccelerationsGpu(int variant, int block_size) {
+    int N = static_cast<int>(bodies.size());
+    if (N == 0) return;
+
+    // Si por alguna razón no se ha asignado memoria antes, la asignamos
+    if (!gpu_allocated) {
+        convertAosToSoa();
+        allocateGpuMemory();
+        copyHostToDevice();
+    }
+
+    // Invoca el kernel directamente usando los miembros privados G_const y softening_eps
+    launchComputeAccelerationsGpu(
+        d_x->get(), d_y->get(), d_mass->get(),
+        d_ax->get(), d_ay->get(),
+        N, G_const, softening_eps, variant, block_size
+    );
+}
+// 1. Constructor de Copia
+NBodySystem::NBodySystem(const NBodySystem& other)
+    :bodies(other.bodies), 
+      G_const(other.G_const), 
+      softening_eps(other.softening_eps), 
+      h_x(other.h_x), h_y(other.h_y), 
+      h_vx(other.h_vx), h_vy(other.h_vy), 
+      h_mass(other.h_mass), h_ax(other.h_ax), h_ay(other.h_ay),
+      gpu_allocated(false) {
+
+    // Si el objeto origen tenía la GPU inicializada, asignamos y copiamos
+    if (other.gpu_allocated) {
+        allocateGpuMemory();
+        copyHostToDevice();
+    }
+}
+
+// 2. Operador de Asignación (=)
+NBodySystem& NBodySystem::operator=(const NBodySystem& other) {
+    if (this != &other) {
+        // Copia de miembros CPU
+        this->bodies = other.bodies;
+        this->G_const = other.G_const;
+        this->softening_eps = other.softening_eps;
+        this->h_x = other.h_x;
+        this->h_y = other.h_y;
+        this->h_vx = other.h_vx;
+        this->h_vy = other.h_vy;
+        this->h_mass = other.h_mass;
+        this->h_ax = other.h_ax;
+        this->h_ay = other.h_ay;
+
+        // Liberación limpia de los smart pointers anteriores de GPU
+        d_x.reset();
+        d_y.reset();
+        d_vx.reset();
+        d_vy.reset();
+        d_mass.reset();
+        d_ax.reset();
+        d_ay.reset();
+        gpu_allocated = false;
+
+        // Si el otro objeto tiene la GPU activa, volvemos a reservar y copiar
+        if (other.gpu_allocated) {
+            allocateGpuMemory();
+            copyHostToDevice();
+        }
+    }
+    return *this;
+}

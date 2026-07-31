@@ -1,78 +1,153 @@
 #include <iostream>
-#include "Particle.h"
-#include "NBodySimulator.h"
+#include <string>
+#include <vector>
 #include <random>
+#include "Particle.h"
+#include "NBodySystem.h"
+#include "NBodySimulator.h"
 #include "Visualizer.h"
+#include "Benchmark.h"
 
 using namespace std;
+/**
+ * Muestra el uso de la CLI del programa
+ */
+void printUsage(char* programName) {
+    cout << "=== SIMULADOR N-BODY (GPU / CUDA) ===" << endl;
+    cout << "Uso:" << endl;
+    cout << "  1. Modo Suite Completa (Single Pass):" << endl;
+    cout << "     " << programName << " -suite [runs] [fixed_block_size] [fixed_n]" << endl;
+    cout << endl;
+    cout << "  2. Modo Test Unico:" << endl;
+    cout << "     " << programName << " -test [N] [variant] [block_size] [runs]" << endl;
+    cout << endl;
+    cout << "  3. Modo Simulacion / Visualizacion:" << endl;
+    cout << "     " << programName << " -sim [N] [steps] [variant] [block_size]" << endl;
+    cout << "======================================" << endl;
+}
 
+int main(int argc, char* argv[]) {
+    // Parámetros físicos base
+    const double G = 1.0;
+    const double epsilon = 10.0;
+    const double dt = 0.01;
+    const unsigned int global_seed = 42;
 
-int main(){
-    cout << "Flag Inicial" << endl;
-    
-    // Definir G
-    double g = 1.0;
-    // Definir epsilon
-    double epsilon = 10;
-    //Definir delta t
-    double delta_t = 0.01; // Paso temporal
-
-    cout << "Flag Definiciones" << endl;
-
-    // Crear sistema NBodySystem con G y epsilon
-    NBodySystem system(g, epsilon);
-    // Agregar partículas al sistema (ejemplo: 3 cuerpos con masas y posiciones iniciales)
-
-    cout << "Flag NBodySystem" << endl;
-
-    int cantidad_particulas = 500;
-
-    // Generador aleatorio con seed fija para resultados reproducibles
-    unsigned int seed = 123;
-    mt19937 gen(seed);
-
-    // Generar numero de posición aleatoria
-    uniform_real_distribution<> random_dis(0, 1000);
-
-    // Generar numero de masa aleatoria
-    uniform_real_distribution<> random_mass(1, 100);
-
-    cout << "Flag Random numbers" << endl;
-
-    for (int i = 0; i < cantidad_particulas; ++i) {
-        double mass = random_mass(gen);
-        double x = random_dis(gen);
-        double y = random_dis(gen);
-        Particle p(mass, x, y);
-        system.addParticle(p);
-        
+    // Ayuda si se solicita
+    if (argc > 1 && (string(argv[1]) == "-h" || string(argv[1]) == "--help")) {
+        printUsage(argv[0]);
+        return 0;
     }
 
-    cout << "Flag Particulas" << endl;
+    // -------------------------------------------------------------------------
+    // MODO 1: SUITE COMPLETA DE BENCHMARKS (-suite)
+    // -------------------------------------------------------------------------
+    if (argc > 1 && string(argv[1]) == "-suite") {
+        cout << ">>> Iniciando Suite Completa de Benchmarking GPU <<<" << endl;
 
-    // Crear simulador NBodySimulator con el sistema
-    NBodySimulator simulator(&system, delta_t);
+        int runs             = (argc > 2) ? stoi(argv[2]) : 5;
+        int fixed_block_size = (argc > 3) ? stoi(argv[3]) : 256;
+        int fixed_n          = (argc > 4) ? stoi(argv[4]) : 1024;
 
-    cout << "Flag NBodySimulator" << endl;
-    
-    // Llamar a simulate() para ejecutar la simulación
+        cout << "Configuracion:" << endl;
+        cout << " - Repeticiones (runs) : " << runs << endl;
+        cout << " - BlockSize para Scaling: " << fixed_block_size << endl;
+        cout << " - N para BlockDim Study : " << fixed_n << endl;
 
-    int num_steps = 5000;   // Numero de pasos de la simulacion
-    cout << "Iniciando simulacion de " << num_steps << " pasos..." << endl;
-    
-    // 1. Correr la simulación y guardar el historial de energía
-    simulation_data data = simulator.processBodies(num_steps);
-    cout << "Flag Simulacion terminada" << endl;
+        // Instanciamos el Benchmark base
+        Benchmark bm(runs, 1000, dt, global_seed);
 
-    // 2. Exportar los datos usando tu Visualizer
-    Visualizer vis;
-    vis.exportarEnergia(data, "energy_timeseries.dat");
-    
-    // 3. Exportar las posiciones finales (Snapshot)
-    vis.abrirArchivo();
-    vis.capturarEstado(system);
-    vis.cerrarArchivo();
+        // Ejecuta el barrido y genera los 3 archivos .dat en un solo pase
+        bm.runFullGpuTestSuite(
+            "benchmark_results.dat",
+            "scaling_analysis.dat",
+            "blockdim_study.dat",
+            fixed_block_size,
+            fixed_n,
+            runs
+        );
 
+        cout << ">>> Suite de Benchmarks completada con exito. <<<" << endl;
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // MODO 2: TEST ÚNICO / CUSTOM (-test)
+    // -------------------------------------------------------------------------
+    if (argc > 1 && string(argv[1]) == "-test") {
+        cout << ">>> Ejecutando Test Unico CPU vs GPU <<<" << endl;
+
+        int num_particles = (argc > 2) ? stoi(argv[2]) : 1024;
+        int variant       = (argc > 3) ? stoi(argv[3]) : 0;
+        int block_size    = (argc > 4) ? stoi(argv[4]) : 256;
+        int runs          = (argc > 5) ? stoi(argv[5]) : 10;
+        int energy_method = 0; // Por defecto
+
+        cout << "Configuracion del Test:" << endl;
+        cout << " - Particulas (N) : " << num_particles << endl;
+        cout << " - Variante GPU   : " << variant << endl;
+        cout << " - Block Size     : " << block_size << endl;
+        cout << " - Corridas (runs): " << runs << endl;
+
+        NBodySystem sys(G, epsilon);
+        Benchmark bm(sys, 1000, dt, runs);
+        bm.setupRandomSystem(sys, num_particles);
+
+        // Ejecuta la prueba individual con validación de tolerancias
+        CpuGpuComparison result = bm.runGpuComparisonTest(
+            "single_test_result.dat",
+            num_particles,
+            variant,
+            block_size,
+            energy_method,
+            runs
+        );
+
+        cout << "\n--- RESUMEN DEL TEST ---" << endl;
+        cout << " CPU Serial   : " << result.cpu_serial.mean_ms << " ms" << endl;
+        cout << " GPU Kernel   : " << result.gpu_kernel.mean_ms << " ms (Speedup: " << result.speedup_kernel << "x)" << endl;
+        cout << " GPU End-2-End: " << result.gpu_end_to_end.mean_ms << " ms (Speedup: " << result.speedup_e2e << "x)" << endl;
+        cout << " Validacion   : " << (result.accuracy_pass ? "PASO [OK]" : "FALLO [FAIL]") << endl;
+        
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // MODO 3: SIMULACIÓN / VISUALIZACIÓN (-sim o Ejecución por Defecto)
+    // -------------------------------------------------------------------------
+    cout << ">>> Ejecutando Simulacion N-Body (Modo Visualizacion) <<<" << endl;
+
+    int num_particles = (argc > 2) ? stoi(argv[2]) : 500;
+    int steps         = (argc > 3) ? stoi(argv[3]) : 1000;
+    int variant       = (argc > 4) ? stoi(argv[4]) : 0;
+    int block_size    = (argc > 5) ? stoi(argv[5]) : 256;
+
+    // Inicialización del sistema físico
+    NBodySystem system(G, epsilon);
+    mt19937 gen(global_seed);
+    uniform_real_distribution<> pos_dis(0, 1000);
+    uniform_real_distribution<> mass_dis(1, 100);
+
+    for (int i = 0; i < num_particles; ++i) {
+        system.addParticle(Particle(mass_dis(gen), pos_dis(gen), pos_dis(gen)));
+    }
+
+    NBodySimulator simulator(&system, dt);
+
+    // Ejecutamos en GPU registrando fotogramas (record_frames = true)
+    int energy_method = 0;
+    simulation_data data = simulator.processBodiesGpu(steps, variant, energy_method, block_size, true);
+
+    // -------------------------------------------------------------------------
+    // SECCIÓN DE VISUALIZADOR (RESERVADA / FUERA DE RESPONSABILIDAD)
+    // -------------------------------------------------------------------------
+    // TODO: La exportación mediante la clase Visualizer la gestiona el encargado del módulo.
+    // Ej:
+    // Visualizer vis;
+    // vis.exportarEnergia(data, "energy_timeseries.dat");
+    // vis.exportarTrayectorias(data, "trajectories.dat");
+    // -------------------------------------------------------------------------
+
+    cout << "Simulacion finalizada. Datos procesados correctamente." << endl;
     return 0;
-
 }

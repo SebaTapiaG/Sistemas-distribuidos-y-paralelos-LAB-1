@@ -53,6 +53,39 @@ class NBodySimulator {
         // Métodos dedicados a demostrar cláusulas puntuales
         double calculateMetricsFirstprivate();
         double calculateFinalStateLastprivate();
+
+        // ── Métodos de Ejecución en GPU (CUDA) ───────────────────────────────────────
+
+        // Avanza 1 paso temporal en GPU (Aceleraciones GPU + Integración Euler GPU)
+        void integrateEulerGpu(int variant = 0, int block_size = 256);
+
+        //Calculo de fisica y energia umificado
+        void stepEulerGpu(int variant = 0, int energy_method = 0, int block_size = 256, double* d_u_ptr = nullptr, double* d_k_ptr = nullptr);
+
+        
+
+        // Calcula energía potencial (u) y cinética (k) directamente desde buffers GPU
+        void calculateEnergyGpu(int method, int block_size, double* d_u_out, double* d_k_out);
+
+        //temporalmente reemplazada por la version con grabacion de fotogramas opcional
+        /*
+        // Bucle principal de simulación ejecutado en GPU
+        simulation_data processBodiesGpu(int iter, int variant = 0, int energy_method = 0, int block_size = 256);
+        */
+        // Bucle principal de simulación ejecutado en GPU con opción de grabar fotogramas
+        simulation_data processBodiesGpu(
+        int iter, 
+        int variant = 0, 
+        int energy_method = 0, 
+        int block_size = 256, 
+        bool record_frames = false);
+        /**
+        * Resetea el estado de los buffers en la GPU cargando nuevamente 
+        * los datos iniciales desde el NBodySystem de la CPU.
+        * Útil para aislar benchmarks Kernel-Only sin medir transferencias en el tiempo.
+        */
+        void resetGpuStateFromBase();
 };
+
 
 #endif

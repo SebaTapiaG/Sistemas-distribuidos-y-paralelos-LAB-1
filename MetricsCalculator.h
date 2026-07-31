@@ -7,22 +7,6 @@
 #include <iostream>
 #include <omp.h>
 #include "NBodySimulator.h" // Para acceder a simulation_data
-
-struct PerformanceResult {
-    double mean_time;
-    double std_dev;
-    double speedup;
-    double serial_fraction; // f en la Ley de Amdahl
-    double theorical_serial_fraction; // f estimada por tiempo
-    double sigma_serial_fraction;
-    double theorical_speedup;
-    double sigma_theorical_speedup;
-    double sigma_speedup;
-    double efficiency;
-    double sigma_efficiency;
-
-};
-//verifica
 struct DiagnosticResult {
     double energy;
     int last_index;
@@ -44,36 +28,40 @@ struct PhysicalResult {
     MomentumResult final_momentum; 
     bool is_valid;
 };
+struct CenterOfMass {
+    double x;
+    double y;
+    double total_mass;
+};
+// Estructura para reportar el resultado de la comparación de tolerancias
+struct AccuracyResult {
+    bool passed;
+    double max_rel_error_pos;
+    double max_rel_error_acc;
+    int failed_components;
+};
 
 class MetricsCalculator {
     public:
         // Métricas de Rendimiento
         static double calculateMean(const std::vector<double>& times);
         static double calculateStdDev(const std::vector<double>& times, double mean);
-        
-        static PerformanceResult analyzePerformance(const std::vector<double>& t1_times, 
-                                                const std::vector<double>& tp_times, 
-                                                const std::vector<double>& ts_times,
-                                                int num_threads);
-
         // Métricas Físicas
         static PhysicalResult analyzePhysics(const simulation_data& data, double tolerance = 1e-5);
         static DiagnosticResult verifyConsistency(const std::vector<Particle>& bodies);
-
-        // Análisis Teórico
-        static double estimateSerialFraction(double speedup, int p);
-        static double estimateSerialFractionByTime(double t1, double tp);
-        static double calculateTheoricalSpeedup(double f, int p);
-        static PerformanceResult analyzePerformanceFirstPrivate(const std::vector<double>& t1_times, 
-                                                const std::vector<double>& tp_times,
-                                                const std::vector<double>& ts_times,
-                                                int num_threads);
-        //Sobrecarga para seleccionar entre métodos de análisis (ej: sin firstprivate (0), con firstprivate (1))
-        static PerformanceResult analyzePerformance(const std::vector<double>& t1_times, 
-                                                const std::vector<double>& tp_times, 
-                                                const std::vector<double>& ts_times,
-                                                int num_threads, int mode);
         static MomentumResult calculateMomentum(const std::vector<Particle>& bodies);
+        static CenterOfMass calculateCenterOfMass(const std::vector<Particle>& bodies);
+        static AccuracyResult compareCpuGpuAccuracy(
+        const std::vector<Particle>& cpu_bodies,
+        const std::vector<Particle>& gpu_bodies,
+        const std::vector<double>& gpu_ax,
+        const std::vector<double>& gpu_ay,
+        const std::vector<double>& cpu_ax,
+        const std::vector<double>& cpu_ay,
+        double rtol = 1e-4, 
+        double atol = 1e-8);
 };
+
+
 
 #endif
