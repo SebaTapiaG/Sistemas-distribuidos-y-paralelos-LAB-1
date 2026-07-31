@@ -28,7 +28,7 @@ TEST(MetricsCalculatorTest, StandardDeviationWithVariance) {
     
     EXPECT_DOUBLE_EQ(mean, 5.0);
     // Varianza muestral = 32 / 7 ≈ 4.571428... -> StdDev ≈ 2.1380899...
-    EXPECT_NEAR(res.stddev_ms, 2.138089935, 1e-5)
+    EXPECT_NEAR(stdDev, 2.138089935, 1e-5);
 }
 
 // 3. Verificación del Centro de Masa
