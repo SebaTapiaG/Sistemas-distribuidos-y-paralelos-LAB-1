@@ -148,9 +148,9 @@ public:
         const std::string& fullResultsFile = "benchmark_results.dat",
         const std::string& scalingFile = "scaling_analysis.dat",
         const std::string& blockDimFile = "blockdim_study.dat",
-        int fixed_block_size = 256,
-        int fixed_n = 1024,
-        int runs = 5
+        int fixed_block_size = 0,
+        int fixed_n = 0,
+        int runs = 10
     );
 };
 #endif
