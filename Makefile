@@ -8,7 +8,7 @@ CUDA_PATH   ?= /usr/local/cuda
 
 # Banderas para CUDA (NVCC) y C++ con OpenMP (G++)
 # Note: -I$(CUDA_PATH)/include permite a g++ encontrar <cuda_runtime.h>
-NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra  -arch=sm_89
+NVCCFLAGS    = -O3 -std=c++17 -Xcompiler -Wall,-Wextra  -arch=sm_80
 CXXFLAGS     = -Wall -Wextra -O3 -fopenmp -std=c++17 -I$(CUDA_PATH)/include
 
 LDFLAGS      = -fopenmp -L$(CUDA_PATH)/lib64 -lcudart
@@ -99,12 +99,6 @@ test_simulation: Particle.o NBodySystem.o NBodySimulator.o
 
 # Ejecuta tanto la suite GoogleTest como todos los tests unitarios de CUDA
 test: $(CU_OBJS)
-	# 0. Instalar GTest si no está presente en Colab
-	@if [ ! -d "/usr/include/gtest" ]; then \
-		echo "Instalando Google Test..."; \
-		apt-get update && apt-get install -y libgtest-dev; \
-	fi
-
 	# 0.1 Compilar kernels CUDA a archivos objeto
 	$(NVCC) $(NVCCFLAGS) -c kernels/accelerations.cu -o accelerations.o
 	$(NVCC) $(NVCCFLAGS) -c kernels/integration.cu -o integration.o

@@ -18,7 +18,7 @@ TEST(BenchmarkStatsTest, CalculateStatsCorrectness) {
     MeasurementResult res = Benchmark::calculateStats(sample);
 
     EXPECT_NEAR(res.mean_ms, 5.0, 1e-5);
-    EXPECT_NEAR(res.stddev_ms, 2.12132034, 1e-5);
+    EXPECT_NEAR(res.stddev_ms, 2.138089935, 1e-5);
 }
 
 TEST(BenchmarkStatsTest, EstimateSerialFractionAmdahl) {

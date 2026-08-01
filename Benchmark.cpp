@@ -752,12 +752,12 @@ void Benchmark::runFullGpuTestSuite(
                 saveFullResultRow(fullResultsFile, res);
 
                 // B. Filtro para scaling_analysis.dat
-                if (blk == fixed_block_size) {
+                if (blk == fixed_block_size || fixed_block_size == 0) {
                     saveScalingRow(scalingFile, res);
                 }
 
                 // C. Filtro para blockdim_study.dat
-                if (n == fixed_n) {
+                if (n == fixed_n || fixed_n == 0) {
                     saveBlockDimRow(blockDimFile, res);
                 }
             }

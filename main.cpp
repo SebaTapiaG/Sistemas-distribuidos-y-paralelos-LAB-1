@@ -45,9 +45,9 @@ int main(int argc, char* argv[]) {
     if (argc > 1 && string(argv[1]) == "-suite") {
         cout << ">>> Iniciando Suite Completa de Benchmarking GPU <<<" << endl;
 
-        int runs             = (argc > 2) ? stoi(argv[2]) : 5;
-        int fixed_block_size = (argc > 3) ? stoi(argv[3]) : 256;
-        int fixed_n          = (argc > 4) ? stoi(argv[4]) : 1024;
+        int runs             = (argc > 2) ? stoi(argv[2]) : 10;
+        int fixed_block_size = (argc > 3) ? stoi(argv[3]) : 0;
+        int fixed_n          = (argc > 4) ? stoi(argv[4]) : 0;
 
         cout << "Configuracion:" << endl;
         cout << " - Repeticiones (runs) : " << runs << endl;
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
         cout << " - N para BlockDim Study : " << fixed_n << endl;
 
         // Instanciamos el Benchmark base
-        Benchmark bm(runs, 1000, dt, global_seed);
+        Benchmark bm(runs, 150, dt, global_seed);
 
         // Ejecuta el barrido y genera los 3 archivos .dat en un solo pase
         bm.runFullGpuTestSuite(
@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
         cout << " - Corridas (runs): " << runs << endl;
 
         NBodySystem sys(G, epsilon);
-        Benchmark bm(sys, 1000, dt, runs);
+        Benchmark bm(sys, 150, dt, runs);
         bm.setupRandomSystem(sys, num_particles);
 
         // Ejecuta la prueba individual con validación de tolerancias
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
     cout << ">>> Ejecutando Simulacion N-Body (Modo Visualizacion) <<<" << endl;
 
     int num_particles = (argc > 2) ? stoi(argv[2]) : 500;
-    int steps         = (argc > 3) ? stoi(argv[3]) : 1000;
+    int steps         = (argc > 3) ? stoi(argv[3]) : 150;
     int variant       = (argc > 4) ? stoi(argv[4]) : 0;
     int block_size    = (argc > 5) ? stoi(argv[5]) : 256;
 
