@@ -138,15 +138,10 @@ int main(int argc, char* argv[]) {
     int energy_method = 0;
     simulation_data data = simulator.processBodiesGpu(steps, variant, energy_method, block_size, true);
 
-    // -------------------------------------------------------------------------
-    // SECCIÓN DE VISUALIZADOR (RESERVADA / FUERA DE RESPONSABILIDAD)
-    // -------------------------------------------------------------------------
-    // TODO: La exportación mediante la clase Visualizer la gestiona el encargado del módulo.
-    // Ej:
-    // Visualizer vis;
-    // vis.exportarEnergia(data, "energy_timeseries.dat");
-    // vis.exportarTrayectorias(data, "trajectories.dat");
-    // -------------------------------------------------------------------------
+    // Exportar datos de la simulación
+    Visualizer vis;
+    vis.exportarEnergia(data, "energy_timeseries.dat");     // Escribe energy_timeseries.dat
+    vis.exportarTrayectorias(data, "trajectories.dat");     // Escribe trajectories.dat
 
     cout << "Simulacion finalizada. Datos procesados correctamente." << endl;
     return 0;
