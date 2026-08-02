@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
     cout << ">>> Ejecutando Simulacion N-Body (Modo Visualizacion) <<<" << endl;
 
     int num_particles = (argc > 2) ? stoi(argv[2]) : 500;
-    int steps         = (argc > 3) ? stoi(argv[3]) : 150;
+    int steps         = (argc > 3) ? stoi(argv[3]) : 5000;
     int variant       = (argc > 4) ? stoi(argv[4]) : 0;
     int block_size    = (argc > 5) ? stoi(argv[5]) : 256;
 
