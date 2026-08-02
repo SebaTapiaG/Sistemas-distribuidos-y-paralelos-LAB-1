@@ -5,6 +5,7 @@ on:
     branches: [main]
   schedule:
     - cron: '0 9 * * 1'
+  workflow_dispatch:
 
 jobs:
   documentador:
@@ -15,16 +16,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Revisar documentación con GitHub Models
-        id: revisar
-        env:
-          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+      - name: Cachear modelos de Ollama
+        uses: actions/cache@v4
+        with:
+          path: ollama_models
+          key: ollama-qwen2.5-coder-7b-${{ runner.os }}
+
+      - name: Iniciar Ollama en Docker
         run: |
-          # 1. Guardamos el contenido en variables de entorno seguras
+          mkdir -p ollama_models
+          docker run -d -v $(pwd)/ollama_models:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+          sleep 10
+          docker exec ollama ollama pull qwen2.5-coder:7b
+
+      - name: Revisar documentación con Ollama Local
+        id: revisar
+        run: |
           export README_CONTENT=$(cat README.md 2>/dev/null || echo "No existe")
           export CHANGELOG_CONTENT=$(cat CHANGELOG.md 2>/dev/null || echo "No existe")
           
-          # 2. Generamos el payload JSON nativamente con Python
           python3 << 'EOF' > payload.json
           import json, os
           
@@ -58,25 +68,24 @@ jobs:
           }}"""
 
           payload = {
-              "model": "gpt-4o-mini",
+              "model": "qwen2.5-coder:7b",
               "messages": [
                   {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
                   {"role": "user", "content": prompt}
               ],
-              "response_format": { "type": "json_object" },
-              "temperature": 0.1
+              "format": "json",
+              "stream": False,
+              "options": { "temperature": 0.1 }
           }
           
-          print(json.dumps(payload))
+          with open('payload.json', 'w') as f:
+              json.dump(payload, f)
           EOF
 
-          # 3. Llamada a GitHub Models leyendo el archivo (adiós problemas de Bash)
-          curl -s -X POST "https://models.inference.ai.azure.com/chat/completions" \
+          curl -s -X POST "http://localhost:11434/api/chat" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $GH_MODELS_TOKEN" \
             -d @payload.json > api_response.json
 
-          # 4. Procesamiento de la respuesta y Salvavidas
           python3 << 'EOF' > analisis.json
           import json, sys
           try:
@@ -84,14 +93,11 @@ jobs:
                   data = json.load(f)
               
               if 'error' in data:
-                  fallback = {
-                      "problemas": [],
-                      "resumen": f"Error de GitHub Models API: {data['error'].get('message', 'Desconocido')}"
-                  }
+                  fallback = { "problemas": [], "resumen": f"Error Ollama: {data['error']}" }
                   print(json.dumps(fallback))
                   sys.exit(0)
                   
-              raw_text = data['choices'][0]['message']['content'].strip()
+              raw_text = data.get('message', {}).get('content', '').strip()
               
               if raw_text.startswith('```json\n'): raw_text = raw_text[8:]
               elif raw_text.startswith('```json'): raw_text = raw_text[7:]
@@ -101,14 +107,10 @@ jobs:
               print(raw_text.strip())
               
           except Exception as e:
-              fallback = {
-                  "problemas": [],
-                  "resumen": f"Fallo al procesar respuesta del LLM: {str(e)}"
-              }
+              fallback = { "problemas": [], "resumen": f"Fallo al procesar LLM: {str(e)}" }
               print(json.dumps(fallback))
           EOF
 
-          
       - name: Crear issues si hay problemas
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,8 +122,7 @@ jobs:
           problemas = analisis.get('problemas', [])
           creados = 0
           for p in problemas:
-              if creados >= 3:
-                  break
+              if creados >= 3: break
               tipo = p.get('tipo', '')
               desc = p.get('descripcion', '')
               sug = p.get('sugerencia', '')
@@ -129,10 +130,10 @@ jobs:
               
               if tipo == 'mecanico':
                   labels = 'documentation,agent,agent:auto-fix'
-                  body = f"## Problema detectado por agente documentador (gpt-4o-mini)\n\n**Archivo:** `{archivo}`\n**Tipo:** Mecánico\n\n## Descripción\n{desc}\n\n## Sugerencia\n{sug}"
+                  body = f"## Problema detectado por agente (qwen2.5-coder local)\n\n**Archivo:** `{archivo}`\n**Tipo:** Mecánico\n\n## Descripción\n{desc}\n\n## Sugerencia\n{sug}"
               else:
                   labels = 'documentation,agent'
-                  body = f"## Revisión requerida — agente documentador (gpt-4o-mini)\n\n**Archivo:** `{archivo}`\n**Tipo:** Requiere intervención humana\n\n## Descripción\n{desc}\n\n**Detalles:** {sug}"
+                  body = f"## Revisión requerida — agente (qwen2.5-coder local)\n\n**Archivo:** `{archivo}`\n**Tipo:** Requiere intervención humana\n\n## Descripción\n{desc}\n\n**Detalles:** {sug}"
                   
               titulo = f"[Agente] Documentación: {desc[:60]}"
               subprocess.run(['gh', 'issue', 'create', '--title', titulo, '--body', body, '--label', labels])
