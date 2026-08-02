@@ -1,125 +1,101 @@
-# Sistemas-distribuidos-y-paralelos-LAB-1
+# Simulador Gravitatorio N-Cuerpos en 2D (CUDA)
 
-## Roles del Equipo: 
-- Kernels CUDA: Vicente Aninnat
-- Host/device y memoria: Juan Loyola
-- Integración y validación: Rodrigo Gonzales
-- Git, releases y agentes: Sebastian Tapia
-- Calidad, CI y visualización: Ignacio Celis Castro
+## Introducción
+Este proyecto implementa un simulador gravitatorio de N-cuerpos en 2D, cuyo modelo físico calcula la interacción entre partículas mediante la ley de gravitación universal de Newton con suavizado Plummer. Corresponde al Laboratorio 2 de Programación GPGPU, y su objetivo principal es acelerar el coste computacional $\mathcal{O}(N^{2})$ trasladando el núcleo de cálculo a la GPU mediante CUDA C++. 
 
-## Requisitos Previos para openMP
-Si deseas ejecutar el código localmente sin Docker, asegúrate de tener instalado:
-* Compilador `g++` con soporte para C++17 y OpenMP (`libomp-dev`).
-* Google Test (`libgtest-dev`) para las pruebas unitarias.
-* Python 3 con `matplotlib` y `pandas` para la generación de gráficos.
-* `ffmpeg` para el renderizado del video de la simulación.
+Además de la paralelización mediante memoria global y compartida (*shared memory*), el proyecto incorpora buenas prácticas de ingeniería de software: integración continua (CI), versionamiento semántico, despliegue en contenedores Docker y la utilización de agentes de Inteligencia Artificial para la validación de código, revisión de Pull Requests y documentación.
 
-## Requisitos de Hardware y Ejecución para CUDA
-Para compilar y ejecutar el proyecto con aceleración, se requiere lo siguiente:
-* **GPU**: GPU NVIDIA compatible con CUDA.
-* **Driver mínimo**: Driver compatible con CUDA 12.x.
-* **Docker**: Si se utiliza Docker, se requiere la imagen `nvidia/cuda:12.x-devel-ubuntu22.04` y el NVIDIA Container Toolkit configurado en el host.
+> **Nota sobre los resultados:** Los resultados obtenidos (archivos `.dat`, visualizaciones `.png` y análisis de métricas) fueron generados ejecutando el proyecto en el clúster del **DIINF (Departamento de Ingeniería Informática)**, haciendo uso de los nodos de cómputo con GPUs NVIDIA A30.
 
-## Ejecución Automatizada con Docker
-Para garantizar la reproducibilidad y evitar problemas de dependencias, puedes ejecutar el pipeline completo de pruebas, benchmark y generación de gráficos utilizando Docker con los siguientes comandos:
+Para asegurar la reproducibilidad de la física y de las métricas de rendimiento, las pruebas y benchmarks utilizan la **semilla: 42**.
+
+---
+
+## Roles del Equipo
+
+A continuación, se detalla la distribución de roles y responsabilidades principales de los integrantes del equipo:
+
+| Nombre | Rol | Responsabilidades |
+| :--- | :--- | :--- |
+| **[Vicente Aninat Norambuena]** | **Kernels CUDA** | Desarrollo de `computeAccelerationsKernel` (básico y *shared*), lanzadores host, control de índices y bordes, uso de macros `CUDA_CHECK`. |
+| **[Juan Loyola]** | **Host/device y memoria** | Gestión de `CudaBuffer`, diseño de layout SoA en device, operaciones `cudaMalloc`/`cudaMemcpy`/`cudaFree`, minimización de transferencias. |
+| **[Rodrigo González García]** | **Integración y validación** | Integración Euler explícita, tests de tolerancia CPU vs GPU, reducción de energía cinética/potencial usando reducción paralela y `atomicAdd`. |
+| **[Sebastian Tapia Galeguillos]** | **Git, releases y agentes** | Protección de la rama `main`, gestión del `CHANGELOG.md`, vinculación de issues y configuración de los tres agentes de Inteligencia Artificial (documentador, revisor de bugs, revisor de MR). |
+| **[Ignacio Celis Castro]** | **Calidad, CI y visualización**| Extensión del pipeline CI, revisión humana de PRs, imagen Docker, ejecución en clúster y generación de scripts Python para gráficos de rendimiento. |
+
+---
+
+## Requisitos del Sistema
+
+### Hardware
+* Procesador multi-núcleo (CPU).
+* Tarjeta Gráfica (GPU) NVIDIA compatible con CUDA (Se recomienda arquitectura `sm_80` o superior, como la NVIDIA A30 utilizada en el clúster DIINF).
+
+### Software y Librerías
+* **Sistema Operativo:** Linux (Ubuntu 22.04 recomendado).
+* **Contenedores:** Imagen base `nvidia/cuda:12.2.2-devel-ubuntu22.04` (usada en entorno SLURM).
+* **Compiladores:** `g++` con soporte para C++17 y `nvcc` (CUDA Toolkit 12.2.2 o superior).
+* **Dependencias C++:** `make`, `libomp-dev`.
+* **Entorno Python:** Python 3.x para la generación de gráficos.
+* **Librerías Python:** `matplotlib`, `numpy`, `pandas`.
+
+---
+
+## Instalación de los requisitos
+
+1. **Clonar el repositorio:**
+   ```bash
+   git https://github.com/SebaTapiaG/Sistemas-distribuidos-y-paralelos-LAB-1.git
+   ```
+
+2. **Instalar dependencias del sistema y Python (basado en Ubuntu/Debian):**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y --no-install-recommends g++ make libomp-dev python3 python3-pip ffmpeg
+   pip install matplotlib numpy pandas
+   ```
+
+---
+
+## Compilación y Ejecución
+
+### Compilación
+Para compilar el proyecto enfocado a la GPU del clúster (arquitectura `sm_80` para NVIDIA A30), ejecuta los siguientes comandos extraídos de la configuración SLURM:
+
 ```bash
-docker build -t lab1-nbody .
-```
-Para hacer el build del contenedor de ubuntu con todo lo necesario para correr el código en la misma carpeta donde se encuentra el proyecto.
-Para correr el simulador en linux:
-```bash
-docker run --rm -v "$(pwd)":/workspace lab1-nbody bash -c "make clean && make && make test && ./nbody_2d && ./nbody_2d -benchmark 1 0 0 0 0 && ./nbody_2d -benchmark 1 0 0 1 10 && ./nbody_2d -benchmark 1 0 0 1 50 && ./nbody_2d -benchmark 1 0 0 1 100 && ./nbody_2d -benchmark 1 0 0 2 10 && ./nbody_2d -benchmark 1 0 0 2 50 && ./nbody_2d -benchmark 1 0 0 2 100 && python3 scripts/plot_energy.py && python3 scripts/plot_scalability.py && python3 scripts/plot_efficiency.py && python3 scripts/plot_chunks.py && python3 scripts/animate_simulation.py"
-```
-Para correr el simulador en windows:
-```bash
-docker run --rm -v "%cd%":/workspace lab1-nbody bash -c "make clean && make && make test && ./nbody_2d && ./nbody_2d -benchmark 1 0 0 0 0 && ./nbody_2d -benchmark 1 0 0 1 10 && ./nbody_2d -benchmark 1 0 0 1 50 && ./nbody_2d -benchmark 1 0 0 1 100 && ./nbody_2d -benchmark 1 0 0 2 10 && ./nbody_2d -benchmark 1 0 0 2 50 && ./nbody_2d -benchmark 1 0 0 2 100 && python3 scripts/plot_energy.py && python3 scripts/plot_scalability.py && python3 scripts/plot_efficiency.py && python3 scripts/plot_chunks.py && python3 scripts/animate_simulation.py"
-```
-
-## Compilación:
-
-### Compilar
-`make`
-
-### Ejecutar benchmarks
-`make benchmark`
-
-### Ejecutar an ́alisis
-`make analysis`
-
-### Pruebas unitarias e integracion
-`make test`
-
-### Limpiar
-`make clean`
-
-## Flujo de Integración Continua (CI) y Clúster
-La ejecución automatizada se divide en dos entornos:
-
-1. **Pipeline CI (Automático en cada MR/PR)**:
-   - Se ejecuta en contenedores de GitHub Actions/GitLab CI.
-   - **Compilación**: Utiliza `nvcc` para asegurar que no hay errores de sintaxis en CUDA.
-   - **Pruebas (CPU)**: Ejecuta `make test` verificando la lógica core y equivalencia serial. Si falla, el MR es bloqueado.
-   - *Nota: Los tests de GPU en CI están omitidos intencionalmente por falta de hardware acelerado en los runners genéricos.*
-
-2. **Ejecución en Clúster DIINF (Manual para mediciones finales)**:
-   - Mediciones de performance (End-to-End, Kernel-only).
-   - Generación de archivos `.dat` de benchmarks finales (`benchmark_results.dat`, `scaling_analysis.dat`, `blockdim_study.dat`).
-   - Todos los resultados de rendimiento reportados en la entrega provienen exclusivamente de este entorno.
-
-
-
-# Instrucciones Detalladas de Ejecución
-
-El simulador cuenta con dos modos principales de ejecución manual si necesitas pasarle parámetros específicos:
-
-### 1. Modo Simulación Estándar (Física y Animación)
-Este modo ejecuta la simulación base y genera los archivos necesarios para visualizar el movimiento de las partículas y la conservación de la energía.
-```bash
-./nbody_2d
-```
-Este comando ejecuta el simulador y genera los archivos energy_timeseries.dat y trajectories.dat
-Para generar los gráficos y el video de las particulas:
-```bash
-python3 scripts/plot_energy.py
-python3 scripts/animate_simulation.py
-```
-Este comando guardara el video simulation_video.mp4 y el gráfico energy_plot.png.
-
-### 2. Modo Benchmark (Rendimiento y OpenMP)
-Este modo realiza pruebas de estrés variando la cantidad de hilos para medir el Speedup, la Eficiencia y evaluar el balanceo de carga (Chunks).
-```bash
-./nbody_2d -benchmark [task_type] [sync_type] [energy_method] [sched] [chunk]
-```
-Las variables de este comando y combinaciones son:
-- task_type: 0 (Tasks), 1 (Parallel For)
-- sync_type: 0 (Atomic), 1 (Critical), 2 (Nowait)
-- energy_method: 0 (Reduction), 1 (Atomic)
-- sched: 0 (Static), 1 (Dynamic), 2 (Guided)
-- chunk: Tamaño del bloque (Ej. 10, 50, 100). Usar 0 para automático.
-
-Una vez ejecutados los benchmarks, se pueden gráficar los resultados con:
-```bash
-python3 scripts/plot_scalability.py
-python3 scripts/plot_efficiency.py
-python3 scripts/plot_chunks.py
+make clean
+make NVCCFLAGS='-O3 -std=c++17 -Xcompiler -Wall,-Wextra -arch=sm_80'
 ```
 
-# Sobrecarga y Detalles de Implementación
-Utilizada para calcular la desviacion estandar de manera paralela en MetricsCalculator.
-Se utiliza first private para poder calcular este valor de manera paralela y ademas asegurar que los valores promedio de los tiempos se entreguen correctamente y que para cada hebra tenga su propia copia local a la hora de ejecutar los calculos
-Por defecto se usa la version normal de analyzePerformance, para usarla, cambiar el valor por defecto del metodo runScalabilityTest de mode a 1 en Benchmark.h.
-### Ejemplo:
-```cpp
-simulation_data runScalabilityTest(
-        int max_threads, 
-        int num_particles, 
-        int task_type,      // Nuevo: 0=Task, 1=Parallel For
-        int sync_type,      // 0=atomic, 1=critical, 2=nowait
-        int energy_method,  // Nuevo: 0=reduce, 1=atomic
-        int schedule_type, 
-        int chunk_size, 
-        double G, 
-        double epsilon,
-        bool perform_diagnostics = false, //no ejecutara la fucnion de diagnostico con last private.
-        int mode = 1 //0= no ejecutara el calculo paralelo de stdev 1= calculo paralelo ejecutado.
-    );
+### Ejecución (Ejemplo de Uso)
+Una vez compilado, puedes correr la simulación principal. Esto generará los archivos de datos (`.dat`) y métricas necesarios para el análisis:
+
+```bash
+./nbody_2d_cuda -sim
+```
+*Para correr los benchmarks de rendimiento exhaustivos:*
+```bash
+./nbody_2d_cuda -bench
+```
+
+### Generación de Gráficos
+Para generar las visualizaciones (archivos `.png`) a partir de los `.dat` resultantes, utiliza los scripts de Python dispuestos en el directorio `scripts/`. **Debes ejecutarlos desde la carpeta raíz del proyecto** de la siguiente forma:
+
+**Generar todas las visualizaciones y datos de una vez:**
+```bash
+python scripts/generate_all_plots.py
+```
+
+**O ejecutar scripts individuales según el análisis deseado:**
+```bash
+python scripts/animate_simulation.py
+python scripts/plot_amdahl.py
+python scripts/plot_basic_vs_shared.py
+python scripts/plot_blockdim.py
+python scripts/plot_chunks.py
+python scripts/plot_efficiency.py
+python scripts/plot_energy.py
+python scripts/plot_kernel_vs_endtoend.py
+python scripts/plot_scalability.py
+python scripts/plot_speedup_gpu.py
+```
