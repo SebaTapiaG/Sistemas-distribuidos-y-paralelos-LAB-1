@@ -92,8 +92,6 @@ python scripts/animate_simulation.py
 python scripts/plot_amdahl.py
 python scripts/plot_basic_vs_shared.py
 python scripts/plot_blockdim.py
-python scripts/plot_chunks.py
-python scripts/plot_efficiency.py
 python scripts/plot_energy.py
 python scripts/plot_kernel_vs_endtoend.py
 python scripts/plot_scalability.py
