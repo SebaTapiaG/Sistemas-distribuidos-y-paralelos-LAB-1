@@ -16,7 +16,7 @@ LOG_FILE="atomic_validation.log"
 N=1024
 VARIANT=0
 BLOCK=256
-RUNS=10
+RUNS=5
 
 echo '=================================================================' >  "$LOG_FILE"
 echo '        VALIDACIÓN ATOMICADD vs REDUCCIÓN EN SHARED MEMORY       ' >> "$LOG_FILE"
