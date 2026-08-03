@@ -548,11 +548,11 @@ void Benchmark::saveScalingRow(const std::string& filename, const CpuGpuComparis
     double sp_kernel = (kernel_ms > 0.0) ? (cpu_ms / kernel_ms) : 1.0;
     double sp_e2e    = (e2e_ms > 0.0) ? (cpu_ms / e2e_ms) : 1.0;
 
-    double theo_limit_kernel = sp_kernel; // Techo puro del Kernel
-    double theo_limit_e2e    = (f_serial_e2e > 0.0) 
-        ? (1.0 / (f_serial_e2e + ((1.0 - f_serial_e2e) / sp_kernel))) 
+    // Límite teórico de Amdahl (p → ∞): S_max = 1 / f
+    double theo_limit_kernel = (res.amdahl_f > 0.0 && res.amdahl_f < 1.0) 
+        ? (1.0 / res.amdahl_f) 
         : sp_kernel;
-
+    double theo_limit_e2e = theo_limit_kernel;
     file << std::left 
          << std::setw(8)  << res.num_particles
          << std::setw(8)  << res.variant
@@ -674,13 +674,11 @@ CpuGpuComparison Benchmark::runGpuComparisonTest(
 
     double *d_u_ptr = nullptr;
     double *d_k_ptr = nullptr;
-    if (energy_method > 0) {
         CUDA_CHECK(cudaMalloc(&d_u_ptr, sizeof(double)));
         CUDA_CHECK(cudaMalloc(&d_k_ptr, sizeof(double)));
-    }
 
     result.gpu_kernel = benchmarkKernelOnly(
-        sim_kernel, variant, energy_method, block_size, d_u_ptr, d_k_ptr, runs
+        sim_kernel, variant, energy_method, block_size, nullptr, nullptr, runs
     );
 
     if (d_u_ptr) CUDA_CHECK(cudaFree(d_u_ptr));
@@ -695,8 +693,10 @@ CpuGpuComparison Benchmark::runGpuComparisonTest(
     result.speedup_e2e = (result.gpu_end_to_end.mean_ms > 0.0) 
         ? (result.cpu_serial.mean_ms / result.gpu_end_to_end.mean_ms) : 0.0;
 
-    result.amdahl_f = (result.speedup_kernel > 0.0) ? (1.0 / result.speedup_kernel) : 1.0;
-
+    // Ley de Amdahl con p finito (A30 = 3584 CUDA cores)
+    // f = ((1/S) - (1/p)) / (1 - (1/p))
+    const int GPU_CUDA_CORES = 3584;
+    result.amdahl_f = estimateSerialFraction(result.speedup_kernel, GPU_CUDA_CORES);
     if (!outputFile.empty()) {
         saveFullResultRow(outputFile, result);
     }
