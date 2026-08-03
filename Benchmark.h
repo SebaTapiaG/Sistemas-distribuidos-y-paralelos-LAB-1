@@ -119,8 +119,6 @@ public:
         int block_size = 256, 
         int runs = 10
     );
-    // Método para ejecutar la suite completa de 40 pruebas CPU vs GPU (Kernel y E2E)
-    void runFullGpuTestSuite(const std::string& outputFile, int runs = 5);
     // ── NUEVOS MÉTODOS DE FORMATO Y ESCRITURA DIFERENCIADA PARA CADA ARCHIVO ──
     static void writeFullResultsHeader(const std::string& filename);
     static void saveFullResultRow(const std::string& filename, const CpuGpuComparison& res);

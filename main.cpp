@@ -29,7 +29,7 @@ void printUsage(char* programName) {
 int main(int argc, char* argv[]) {
     // Parámetros físicos base
     const double G = 1.0;
-    const double epsilon = 10.0;
+    const double epsilon = 0.01;
     const double dt = 0.01;
     const unsigned int global_seed = 42;
 
@@ -121,6 +121,7 @@ int main(int argc, char* argv[]) {
     int steps         = (argc > 3) ? stoi(argv[3]) : 5000;
     int variant       = (argc > 4) ? stoi(argv[4]) : 0;
     int block_size    = (argc > 5) ? stoi(argv[5]) : 256;
+    int energy_method = (argc > 6) ? stoi(argv[6]) : 0;
 
     // Inicialización del sistema físico
     NBodySystem system(G, epsilon);
@@ -135,7 +136,6 @@ int main(int argc, char* argv[]) {
     NBodySimulator simulator(&system, dt);
 
     // Ejecutamos en GPU registrando fotogramas (record_frames = true)
-    int energy_method = 0;
     simulation_data data = simulator.processBodiesGpu(steps, variant, energy_method, block_size, true);
 
     // Exportar datos de la simulación

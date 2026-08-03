@@ -111,7 +111,7 @@ test: $(CU_OBJS)
 		tests/TestBenchmarkGPU.cpp \
 		tests/TestSuiteGPU.cpp \
 		Particle.cpp NBodySystem.cpp NBodySimulator.cpp Visualizer.cpp MetricsCalculator.cpp Benchmark.cpp \
-		accelerations.o integration.o energy.o \
+		kernels/accelerations.o kernels/integration.o kernels/energy.o \
 		-L/usr/local/cuda/lib64 -lcudart $(LDFLAGS) -lgtest -lgtest_main -pthread
 	./run_tests
 
