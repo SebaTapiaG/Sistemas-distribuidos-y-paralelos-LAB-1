@@ -24,12 +24,27 @@ A continuación, se detalla la distribución de roles y responsabilidades princi
 | **[Ignacio Celis Castro]** | **Calidad, CI y visualización**| Extensión del pipeline CI, revisión humana de PRs, imagen Docker, ejecución en clúster y generación de scripts Python para gráficos de rendimiento. |
 
 ---
+### Aclaraciones:
+* El tiempo es medido en segundos y transformado a milisegundos
+* Las tolerancias usadas son las recomendadas como punto inicial en el enunciado y no se vio necesaria su modificación, ya que no se apreciaba una perturbación en la física del sistema
+
+### Archivos de Salida
+---
+| Archivo                       | Contenido                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `benchmark_results.dat`       | Matriz maestra: N, variant, blockSize, tiempos CPU/GPU, speedups, accuracy. |
+| `scaling_analysis.dat`        | Subconjunto para análisis de escalabilidad (filtrado por block size fijo).  |
+| `blockdim_study.dat`          | Subconjunto para estudio de blockDim.x (filtrado por N fijo).               |
+| `cluster_run.log` / `cluster_sim_run.log` | Logs de Slurm: nodo, GPU, driver, `nvcc --version`, comandos.               |
+| `energy_timeseries.dat`       | Historia de K, U, E_total por paso (modo `-sim`).                           |
+| `trajectories.dat`            | Trayectorias: paso, ID, masa, x, y, vx, vy (modo `-sim`).                   |
+
 
 ## Requisitos del Sistema
 
 ### Hardware
 * Procesador multi-núcleo (CPU).
-* Tarjeta Gráfica (GPU) NVIDIA compatible con CUDA (Se recomienda arquitectura `sm_80` o superior, como la NVIDIA A30 utilizada en el clúster DIINF).
+* Tarjeta Gráfica (GPU) NVIDIA A30 (Arquitectura sm80)
 
 ### Software y Librerías
 * **Sistema Operativo:** Linux (Ubuntu 22.04 recomendado).
@@ -68,14 +83,57 @@ make NVCCFLAGS='-O3 -std=c++17 -Xcompiler -Wall,-Wextra -arch=sm_80'
 ```
 
 ### Ejecución (Ejemplo de Uso)
-Una vez compilado, puedes correr la simulación principal. Esto generará los archivos de datos (`.dat`) y métricas necesarios para el análisis:
+* Una vez compilado, para hacer una ejecución de la matriz de pruebas:
 
+```bash
+./nbody_2d_cuda -suite
+```
+#### Parámetros de -suite
+---
+| Posición (argv) | Parámetro          | Tipo  | Valor por defecto | Descripción                                                |
+| --------------- | ------------------ | ----- | ----------------- | ---------------------------------------------------------- |
+| `argv[1]`       | `-suite`           | flag  | —                 | Activa el modo suite completa                              |
+| `argv[2]`       | `runs`             | `int` | `10`              | Repeticiones por prueba                                    |
+| `argv[3]`       | `fixed_block_size` | `int` | `0`               | Filtro blockDim para `scaling_analysis` (`0` = sin filtro) |
+| `argv[4]`       | `fixed_n`          | `int` | `0`               | Filtro N para `blockdim_study` (`0` = sin filtro)          |
+
+* Para correr una simulación, exportando energía y posiciones:
 ```bash
 ./nbody_2d_cuda -sim
 ```
-*Para correr los benchmarks de rendimiento exhaustivos:*
+#### Parámetros de -sim
+---
+| Posición (argv) | Parámetro       | Tipo  | Valor por defecto | Descripción                       |
+| --------------- | --------------- | ----- | ----------------- | --------------------------------- |
+| `argv[1]`       | `-sim`          | flag  | —                 | Activa el modo simulación         |
+| `argv[2]`       | `N`             | `int` | `500`             | Número de partículas              |
+| `argv[3]`       | `steps`         | `int` | `5000`            | Pasos temporales de la simulación |
+| `argv[4]`       | `variant`       | `int` | `0`               | Variante del kernel GPU           |
+| `argv[5]`       | `block_size`    | `int` | `256`             | Tamaño de bloque CUDA             |
+| `argv[6]`       | `energy_method` | `int` | `0`               | Método de cálculo de energía      |
+* Para ejecutar un test individual:
 ```bash
-./nbody_2d_cuda -bench
+./nbody_2d_cuda -test
+```
+#### Parámetros de -test
+---
+
+| Posición (argv) | Parámetro    | Tipo  | Valor por defecto | Descripción                          |
+| --------------- | ------------ | ----- | ----------------- | ------------------------------------ |
+| `argv[1]`       | `-test`      | flag  | —                 | Activa el modo test individual       |
+| `argv[2]`       | `N`          | `int` | `1024`            | Número de partículas                 |
+| `argv[3]`       | `variant`    | `int` | `0`               | Variante del kernel GPU (0 para global, 1 para shared)             |
+| `argv[4]`       | `block_size` | `int` | `256`             | Tamaño de bloque CUDA (`blockDim.x`) |
+| `argv[5]`       | `runs`       | `int` | `10`              | Corridas para promediar tiempos      |
+
+
+*Para correr el suite de pruebas en el Cluster se utiliza el Slurm " run_docker.slurm", ejecutando el siguiente comando:*
+```bash
+sbatch run_docker.slurm
+```
+*Su equivalente para simular y almacenar las energias y posiciones es:*
+```bash
+sbatch run_sim.slurm
 ```
 
 ### Generación de Gráficos
